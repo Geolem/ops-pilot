@@ -263,7 +263,6 @@ export default function EndpointsPage() {
         prefill={curlPrefill ?? undefined}
         onClose={() => { setEditOpen(false); setCurlPrefill(null); }}
         onSaved={(id) => {
-          qc.invalidateQueries({ queryKey: ["endpoints", activeProjectId] });
           setEditOpen(false);
           setCurlPrefill(null);
           setSelectedId(id);
@@ -670,10 +669,11 @@ function EndpointEditor({
           <button className="btn-ghost" onClick={onClose}>取消</button>
           <button
             className="btn-primary"
-            disabled={!form.name || !form.path}
+            disabled={!form.name || !form.path || save.isPending}
             onClick={() => save.mutate()}
           >
-            <Save className="w-4 h-4" /> 保存
+            <Save className="w-4 h-4" />
+            {save.isPending ? "保存中…" : "保存"}
           </button>
         </div>
       </div>
