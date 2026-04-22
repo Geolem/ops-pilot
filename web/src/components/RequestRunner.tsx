@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Clock, AlertTriangle, Terminal, Maximize2, RefreshCw, Table2, ChevronRight } from "lucide-react";
+import { Play, Clock, AlertTriangle, Terminal, Maximize2, RefreshCw, ChevronRight, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api, RunResult, Endpoint } from "@/lib/api";
 import { statusClass, stringifyPretty } from "@/lib/utils";
@@ -33,6 +33,26 @@ function resolveArray(body: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
+type FieldMap = { from: string; to: string; enabled: boolean };
+
+function CopyChip({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="inline-flex items-center gap-1 font-mono text-[11px] px-1.5 py-0.5 rounded bg-brand/15 text-brand-glow hover:bg-brand/25 transition-colors"
+      title="点击复制"
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+      {text}
+    </button>
+  );
+}
+
 function TableView({
   rows,
   projectId,
@@ -46,8 +66,18 @@ function TableView({
 }) {
   const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r)))).slice(0, 12);
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [mapping, setMapping] = useState<FieldMap[]>([]);
   const [actionEpId, setActionEpId] = useState("");
   const [actionResult, setActionResult] = useState<RunResult | null>(null);
+
+  // Re-init mapping whenever a new row is selected
+  useEffect(() => {
+    if (!selectedRow) { setMapping([]); return; }
+    setMapping(
+      Object.keys(selectedRow).map((k) => ({ from: k, to: k, enabled: true }))
+    );
+    setActionResult(null);
+  }, [selectedRow]);
 
   const { data: endpoints = [] } = useQuery({
     queryKey: ["endpoints", projectId],
@@ -58,12 +88,18 @@ function TableView({
     enabled: !!projectId,
   });
 
+  const extraVariables = Object.fromEntries(
+    mapping
+      .filter((m) => m.enabled && m.to.trim())
+      .map((m) => [m.to.trim(), selectedRow?.[m.from]])
+  );
+
   const runAction = useMutation({
     mutationFn: () =>
       api.post<RunResult>("/api/run", {
         endpointId: actionEpId,
         environmentId: environmentId ?? undefined,
-        extraVariables: selectedRow ?? {},
+        extraVariables,
       }),
     onSuccess: (r) => {
       setActionResult(r);
@@ -74,20 +110,24 @@ function TableView({
 
   const fmt = (v: unknown): string => {
     if (v === null || v === undefined) return "—";
-    if (typeof v === "object") return JSON.stringify(v).slice(0, 60);
+    if (typeof v === "object") return JSON.stringify(v).slice(0, 80);
     return String(v);
   };
+
+  const updateMapping = (i: number, patch: Partial<FieldMap>) =>
+    setMapping((prev) => prev.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-400">{rows.length} 条记录，点击行查看操作</span>
+        <span className="text-xs text-slate-400">{rows.length} 条记录，点击行配置参数并执行下一个接口</span>
         <button className="btn-ghost text-xs py-1" onClick={onRefresh}>
-          <RefreshCw className="w-3 h-3" /> 刷新
+          <RefreshCw className="w-3 h-3" /> 刷新列表
         </button>
       </div>
 
-      <div className="overflow-auto max-h-72 rounded-lg border border-white/5">
+      {/* Data table */}
+      <div className="overflow-auto max-h-64 rounded-lg border border-white/5">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-bg-panel">
             <tr>
@@ -96,7 +136,7 @@ function TableView({
                   {c}
                 </th>
               ))}
-              <th className="px-3 py-2 border-b border-white/5" />
+              <th className="px-3 py-2 border-b border-white/5 w-6" />
             </tr>
           </thead>
           <tbody>
@@ -104,9 +144,9 @@ function TableView({
               <tr
                 key={i}
                 className={`border-b border-white/5 hover:bg-bg-hover/40 cursor-pointer transition-colors ${
-                  selectedRow === row ? "bg-brand/10" : ""
+                  selectedRow === row ? "bg-brand/10 ring-1 ring-inset ring-brand/30" : ""
                 }`}
-                onClick={() => { setSelectedRow(row === selectedRow ? null : row); setActionResult(null); }}
+                onClick={() => setSelectedRow(row === selectedRow ? null : row)}
               >
                 {cols.map((c) => (
                   <td key={c} className="px-3 py-2 font-mono text-slate-300 whitespace-nowrap max-w-[200px] truncate">
@@ -131,19 +171,67 @@ function TableView({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="rounded-lg border border-brand/30 bg-brand/5 p-3 space-y-3">
-              <div className="text-xs text-slate-400 font-medium">行数据（将注入为 extraVariables）</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-28 overflow-auto">
-                {Object.entries(selectedRow).map(([k, v]) => (
-                  <div key={k} className="flex items-baseline gap-1 text-xs">
-                    <span className="text-slate-400 shrink-0">{k}:</span>
-                    <span className="font-mono text-slate-200 truncate">{fmt(v)}</span>
+            <div className="rounded-lg border border-brand/30 bg-brand/5 p-4 space-y-4">
+
+              {/* Field → variable mapping */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-300">字段 → 变量映射</span>
+                  <span className="text-[11px] text-slate-500">在接口路径 / 参数 / Body 中用 <span className="font-mono text-brand-glow">{"{{变量名}}"}</span> 引用</span>
+                </div>
+
+                <div className="rounded-md border border-white/5 overflow-hidden">
+                  {/* header */}
+                  <div className="grid grid-cols-[20px_1fr_28px_1fr_1fr] gap-2 px-3 py-1.5 bg-bg-elevated/60 text-[11px] text-slate-500 font-medium">
+                    <span />
+                    <span>行字段</span>
+                    <span />
+                    <span>变量名</span>
+                    <span>当前值</span>
                   </div>
-                ))}
+                  <div className="max-h-44 overflow-auto divide-y divide-white/5">
+                    {mapping.map((m, i) => (
+                      <div key={m.from} className={`grid grid-cols-[20px_1fr_28px_1fr_1fr] gap-2 px-3 py-2 items-center text-xs ${!m.enabled ? "opacity-40" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={m.enabled}
+                          onChange={(e) => updateMapping(i, { enabled: e.target.checked })}
+                          className="accent-brand cursor-pointer"
+                        />
+                        <span className="font-mono text-slate-300 truncate" title={m.from}>{m.from}</span>
+                        <span className="text-slate-500 text-center">→</span>
+                        <input
+                          className="input py-0.5 px-2 text-xs font-mono h-7"
+                          value={m.to}
+                          onChange={(e) => updateMapping(i, { to: e.target.value })}
+                          disabled={!m.enabled}
+                          placeholder="变量名"
+                        />
+                        <span className="font-mono text-slate-400 truncate text-[11px]" title={fmt(selectedRow[m.from])}>
+                          {fmt(selectedRow[m.from])}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Copyable chips for enabled mappings */}
+                {mapping.filter((m) => m.enabled && m.to.trim()).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="text-[11px] text-slate-500">点击复制：</span>
+                    {mapping
+                      .filter((m) => m.enabled && m.to.trim())
+                      .map((m) => (
+                        <CopyChip key={m.from} text={`{{${m.to.trim()}}}`} />
+                      ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-white/5">
+
+              {/* Endpoint selector + run */}
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
                 <select
-                  className="input py-1.5 text-xs flex-1 min-w-[180px]"
+                  className="input py-1.5 text-xs flex-1 min-w-[200px]"
                   value={actionEpId}
                   onChange={(e) => { setActionEpId(e.target.value); setActionResult(null); }}
                 >
@@ -161,10 +249,11 @@ function TableView({
                   {runAction.isPending ? "执行中…" : "执行"}
                 </button>
               </div>
+
               {actionResult && (
-                <div className={`text-xs rounded px-2 py-1.5 font-mono ${statusClass(actionResult.status)} bg-bg-elevated/60`}>
-                  HTTP {actionResult.status} · {actionResult.durationMs}ms
-                  {actionResult.error && <span className="text-rose-300 ml-2">{actionResult.error}</span>}
+                <div className={`text-xs rounded-md px-3 py-2 font-mono ${statusClass(actionResult.status)} bg-bg-elevated/60 space-y-0.5`}>
+                  <div>HTTP {actionResult.status} · {actionResult.durationMs}ms</div>
+                  {actionResult.error && <div className="text-rose-300">{actionResult.error}</div>}
                 </div>
               )}
             </div>
