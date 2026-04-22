@@ -95,6 +95,8 @@ export async function executeRoutes(app: FastifyInstance) {
       bodyType,
       variables: scope,
       extract,
+      preScript: endpoint?.preScript ?? "",
+      postScript: endpoint?.postScript ?? "",
     });
 
     await prisma.history.create({

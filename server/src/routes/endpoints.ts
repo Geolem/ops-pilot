@@ -14,6 +14,8 @@ const endpointSchema = z.object({
   bodyType: z.string().optional(),
   tags: z.string().optional(),
   extract: z.string().optional(),
+  preScript: z.string().optional(),
+  postScript: z.string().optional(),
 });
 
 export async function endpointRoutes(app: FastifyInstance) {

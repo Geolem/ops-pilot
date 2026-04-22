@@ -186,7 +186,7 @@ function FlowEditor({
             },
           }))
         ),
-        edges: JSON.stringify(graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))),
+        edges: JSON.stringify(graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, data: { condition: (e.data as any)?.condition ?? null } }))),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flows"] });
@@ -209,7 +209,7 @@ function FlowEditor({
         endpointId: (n.data as any).endpointId ?? n.data.endpoint?.id ?? "",
         alias: n.data.alias,
       })).filter((n) => n.endpointId);
-      const payloadEdges = graph.edges.map((e) => ({ source: e.source, target: e.target }));
+      const payloadEdges = graph.edges.map((e) => ({ source: e.source, target: e.target, condition: (e.data as any)?.condition ?? null }));
       setRunStates(Object.fromEntries(payloadNodes.map((n) => [n.id, { status: "running" }])));
       return api.post<any>("/api/flows/run", {
         environmentId: environmentId ?? undefined,
@@ -350,6 +350,7 @@ function hydrate(flow: Flow, endpoints: Endpoint[]): { nodes: Node<EndpointNodeD
       id: e.id ?? `e-${e.source}-${e.target}`,
       source: e.source,
       target: e.target,
+      data: { condition: e.data?.condition ?? e.condition ?? null },
     }));
   } else {
     nodes = rawNodes.map((n, i) => ({

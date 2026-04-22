@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X } from "lucide-react";
+import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { api, Endpoint } from "@/lib/api";
 import { useAppStore } from "@/store/app";
@@ -12,7 +12,9 @@ import JsonEditor from "@/components/JsonEditor";
 import KeyValueEditor, { recordToRows, rowsToRecord, KV } from "@/components/KeyValueEditor";
 import RequestRunner from "@/components/RequestRunner";
 import TagInput from "@/components/TagInput";
-import { safeJson, stringifyPretty } from "@/lib/utils";
+import CurlImport from "@/components/CurlImport";
+import { safeJson } from "@/lib/utils";
+import { Environment } from "@/lib/api";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const UNTAGGED = "__untagged__";
@@ -36,6 +38,8 @@ export default function EndpointsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [methodFilter, setMethodFilter] = useState<string>("");
+  const [curlOpen, setCurlOpen] = useState(false);
+  const [curlPrefill, setCurlPrefill] = useState<Partial<ReturnType<typeof makeDraft>> | null>(null);
 
   const { data: endpoints = [] } = useQuery({
     queryKey: ["endpoints", activeProjectId],
@@ -45,6 +49,16 @@ export default function EndpointsPage() {
         : Promise.resolve([]),
     enabled: !!activeProjectId,
   });
+
+  const { data: envs = [] } = useQuery({
+    queryKey: ["environments", activeProjectId],
+    queryFn: () =>
+      activeProjectId
+        ? api.get<Environment[]>(`/api/environments?projectId=${activeProjectId}`)
+        : Promise.resolve([]),
+    enabled: !!activeProjectId,
+  });
+  const baseUrls = envs.map((e) => e.baseUrl);
 
   const allTags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -126,13 +140,17 @@ export default function EndpointsPage() {
             </div>
             <button
               className="btn-primary px-2"
-              onClick={() => {
-                setSelectedId(null);
-                setEditOpen(true);
-              }}
+              onClick={() => { setCurlPrefill(null); setSelectedId(null); setEditOpen(true); }}
               title="新建接口"
             >
               <Plus className="w-4 h-4" />
+            </button>
+            <button
+              className="btn-ghost px-2"
+              onClick={() => setCurlOpen(true)}
+              title="从 curl 导入"
+            >
+              <Terminal className="w-4 h-4" />
             </button>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -238,14 +256,35 @@ export default function EndpointsPage() {
 
       <EndpointEditor
         open={editOpen}
-        endpoint={selected && editOpen ? selected : null}
+        endpoint={selected && editOpen && !curlPrefill ? selected : null}
         projectId={activeProjectId}
         existingTags={allTags.filter(([t]) => t !== UNTAGGED).map(([t]) => t)}
-        onClose={() => setEditOpen(false)}
+        prefill={curlPrefill ?? undefined}
+        onClose={() => { setEditOpen(false); setCurlPrefill(null); }}
         onSaved={(id) => {
           qc.invalidateQueries({ queryKey: ["endpoints", activeProjectId] });
           setEditOpen(false);
+          setCurlPrefill(null);
           setSelectedId(id);
+        }}
+      />
+
+      <CurlImport
+        open={curlOpen}
+        onClose={() => setCurlOpen(false)}
+        baseUrls={baseUrls}
+        onImport={(parsed) => {
+          const draft = makeDraft(null, activeProjectId!);
+          draft.method = parsed.method;
+          draft.path = parsed.url;
+          draft._headers = Object.entries(parsed.headers).map(([key, value]) => ({ key, value }));
+          draft._query = Object.entries(parsed.query).map(([key, value]) => ({ key, value }));
+          draft.body = parsed.body;
+          draft.bodyType = parsed.bodyType;
+          setCurlPrefill(draft);
+          setCurlOpen(false);
+          setSelectedId(null);
+          setEditOpen(true);
         }}
       />
     </div>
@@ -314,6 +353,7 @@ function EndpointEditor({
   endpoint,
   projectId,
   existingTags,
+  prefill,
   onClose,
   onSaved,
 }: {
@@ -321,12 +361,18 @@ function EndpointEditor({
   endpoint: Endpoint | null;
   projectId: string;
   existingTags: string[];
+  prefill?: Partial<ReturnType<typeof makeDraft>>;
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
   const isNew = !endpoint;
-  const [form, setForm] = useState(() => makeDraft(endpoint, projectId));
-  const [tab, setTab] = useState<"params" | "headers" | "body" | "extract">("params");
+  const [form, setForm] = useState(() => ({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) }));
+  const [tab, setTab] = useState<"params" | "headers" | "body" | "extract" | "pre" | "post">("params");
+
+  useEffect(() => {
+    if (open) setForm({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const qc = useQueryClient();
   const save = useMutation({
@@ -342,6 +388,7 @@ function EndpointEditor({
       delete (payload as any)._query;
       delete (payload as any)._extract;
       delete (payload as any)._tags;
+      // preScript / postScript pass through as-is
       if (form.id) return api.patch<Endpoint>(`/api/endpoints/${form.id}`, payload);
       return api.post<Endpoint>("/api/endpoints", payload);
     },
@@ -417,8 +464,8 @@ function EndpointEditor({
           )}
         </div>
 
-        <div className="border-b border-white/5 flex gap-1">
-          {(["params", "headers", "body", "extract"] as const).map((t) => (
+        <div className="border-b border-white/5 flex gap-1 flex-wrap">
+          {(["params", "headers", "body", "extract", "pre", "post"] as const).map((t) => (
             <button
               key={t}
               className={`px-3 py-2 text-xs -mb-px border-b-2 ${
@@ -485,6 +532,38 @@ function EndpointEditor({
             />
           </div>
         )}
+        {tab === "pre" && (
+          <div className="space-y-2">
+            <div className="text-[11px] text-slate-500">
+              请求发出前执行的 JS 脚本。可用变量：<code className="text-brand-glow">vars</code>（环境变量池，可读写）、
+              <code className="text-brand-glow">request</code>（含 method/headers/query/body/url，可修改）、
+              <code className="text-brand-glow">console.log()</code>。<br />
+              示例：<code className="text-accent">vars.ts = Date.now(); request.headers['X-Timestamp'] = String(vars.ts);</code>
+            </div>
+            <JsonEditor
+              value={form.preScript}
+              onChange={(v) => setForm({ ...form, preScript: v })}
+              height={220}
+              language="plaintext"
+            />
+          </div>
+        )}
+        {tab === "post" && (
+          <div className="space-y-2">
+            <div className="text-[11px] text-slate-500">
+              收到响应后执行的 JS 脚本。可用变量：<code className="text-brand-glow">vars</code>（可读写）、
+              <code className="text-brand-glow">response</code>（含 status/body/headers）、
+              <code className="text-brand-glow">console.log()</code>。<br />
+              示例：<code className="text-accent">if (response.status !== 200) throw new Error('failed'); vars.token = response.body.data.token;</code>
+            </div>
+            <JsonEditor
+              value={form.postScript}
+              onChange={(v) => setForm({ ...form, postScript: v })}
+              height={220}
+              language="plaintext"
+            />
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button className="btn-ghost" onClick={onClose}>取消</button>
@@ -511,6 +590,8 @@ function makeDraft(ep: Endpoint | null, projectId: string) {
     path: ep?.path ?? "",
     body: ep?.body ?? "",
     bodyType: ep?.bodyType ?? "json",
+    preScript: ep?.preScript ?? "",
+    postScript: ep?.postScript ?? "",
     _tags: parseTags(ep?.tags),
     _headers: recordToRows(safeJson(ep?.headers, {}) as Record<string, string>),
     _query: recordToRows(safeJson(ep?.query, {}) as Record<string, string>),
@@ -519,5 +600,8 @@ function makeDraft(ep: Endpoint | null, projectId: string) {
 }
 
 function tabLabel(t: string) {
-  return { params: "Query 参数", headers: "请求头", body: "Body", extract: "变量提取" }[t] ?? t;
+  return {
+    params: "Query 参数", headers: "请求头", body: "Body",
+    extract: "变量提取", pre: "前置脚本", post: "后置脚本",
+  }[t] ?? t;
 }

@@ -58,6 +58,8 @@ export interface Endpoint {
   bodyType: string;
   tags: string;
   extract: string;
+  preScript: string;
+  postScript: string;
   updatedAt: string;
 }
 
@@ -82,5 +84,6 @@ export interface RunResult {
   responseBody: unknown;
   responseText: string;
   extracted: Record<string, unknown>;
+  scriptLog: string[];
   error?: string;
 }

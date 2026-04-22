@@ -5,10 +5,19 @@ import { executeRequest } from "../services/executor.js";
 
 function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
+  try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+
+function evalCondition(
+  expr: string | null | undefined,
+  ctx: { status: number; body: unknown; headers: Record<string, string>; vars: Record<string, unknown> }
+): boolean {
+  if (!expr?.trim()) return true;
   try {
-    return JSON.parse(raw) as T;
+    const fn = new Function("status", "body", "headers", "vars", `return !!(${expr});`);
+    return fn(ctx.status, ctx.body, ctx.headers, ctx.vars);
   } catch {
-    return fallback;
+    return false;
   }
 }
 
@@ -22,62 +31,18 @@ const flowSchema = z.object({
 
 const flowRunSchema = z.object({
   environmentId: z.string().optional(),
-  nodes: z
-    .array(
-      z.object({
-        id: z.string(),
-        endpointId: z.string(),
-        alias: z.string().optional(),
-      })
-    )
-    .min(1),
-  edges: z
-    .array(
-      z.object({
-        source: z.string(),
-        target: z.string(),
-      })
-    )
-    .optional(),
+  nodes: z.array(z.object({
+    id: z.string(),
+    endpointId: z.string(),
+    alias: z.string().optional(),
+  })).min(1),
+  edges: z.array(z.object({
+    source: z.string(),
+    target: z.string(),
+    condition: z.string().optional().nullable(),
+  })).optional(),
   extraVariables: z.record(z.unknown()).optional(),
 });
-
-function orderNodesByEdges(
-  nodes: { id: string; endpointId: string; alias?: string }[],
-  edges: { source: string; target: string }[] | undefined
-) {
-  if (!edges || edges.length === 0) return nodes;
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const incoming = new Map<string, number>();
-  const next = new Map<string, string[]>();
-  for (const n of nodes) {
-    incoming.set(n.id, 0);
-    next.set(n.id, []);
-  }
-  for (const e of edges) {
-    if (!byId.has(e.source) || !byId.has(e.target)) continue;
-    incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
-    next.get(e.source)!.push(e.target);
-  }
-  const queue: string[] = [];
-  for (const [id, n] of incoming) if (n === 0) queue.push(id);
-  const ordered: typeof nodes = [];
-  const seen = new Set<string>();
-  while (queue.length) {
-    const id = queue.shift()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const node = byId.get(id);
-    if (node) ordered.push(node);
-    for (const target of next.get(id) ?? []) {
-      const remaining = (incoming.get(target) ?? 0) - 1;
-      incoming.set(target, remaining);
-      if (remaining <= 0) queue.push(target);
-    }
-  }
-  for (const n of nodes) if (!seen.has(n.id)) ordered.push(n);
-  return ordered;
-}
 
 export async function flowRoutes(app: FastifyInstance) {
   app.get("/api/flows", async (req) => {
@@ -118,22 +83,50 @@ export async function flowRoutes(app: FastifyInstance) {
     const env = input.environmentId
       ? await prisma.environment.findUnique({ where: { id: input.environmentId } })
       : null;
+
     const baseVars = env ? safeParseJson<Record<string, unknown>>(env.variables, {}) : {};
     const envHeaders = env ? safeParseJson<Record<string, string>>(env.headers, {}) : {};
     const scope: Record<string, unknown> = { ...baseVars, ...(input.extraVariables ?? {}) };
     const results: any[] = [];
 
-    const ordered = orderNodesByEdges(input.nodes, input.edges);
+    const nodeMap = new Map(input.nodes.map((n) => [n.id, n]));
+    const edges = input.edges ?? [];
 
-    for (const node of ordered) {
+    // build adjacency: nodeId -> outgoing edges
+    const outgoing = new Map<string, { target: string; condition?: string | null }[]>();
+    const incomingCount = new Map<string, number>();
+    for (const n of input.nodes) { outgoing.set(n.id, []); incomingCount.set(n.id, 0); }
+    for (const e of edges) {
+      outgoing.get(e.source)?.push({ target: e.target, condition: e.condition });
+      incomingCount.set(e.target, (incomingCount.get(e.target) ?? 0) + 1);
+    }
+
+    // roots = nodes with no incoming edges
+    const roots = input.nodes.filter((n) => !incomingCount.get(n.id)).map((n) => n.id);
+    if (roots.length === 0 && input.nodes.length > 0) roots.push(input.nodes[0].id);
+
+    const queue: string[] = [...roots];
+    const executed = new Set<string>();
+    const queued = new Set<string>(roots);
+
+    while (queue.length) {
+      const nodeId = queue.shift()!;
+      if (executed.has(nodeId)) continue;
+      executed.add(nodeId);
+
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+
       const ep = await prisma.endpoint.findUnique({ where: { id: node.endpointId } });
       if (!ep) {
-        results.push({ nodeId: node.id, error: "endpoint not found" });
-        break;
+        results.push({ nodeId, error: "endpoint not found", skipped: true });
+        continue;
       }
+
       const epHeaders = safeParseJson<Record<string, string>>(ep.headers, {});
       const epQuery = safeParseJson<Record<string, string>>(ep.query, {});
       const epExtract = safeParseJson<Record<string, string>>(ep.extract, {});
+
       const result = await executeRequest({
         method: ep.method,
         baseUrl: env?.baseUrl ?? "",
@@ -144,24 +137,33 @@ export async function flowRoutes(app: FastifyInstance) {
         bodyType: (ep.bodyType as any) ?? "json",
         variables: scope,
         extract: epExtract,
+        preScript: ep.preScript ?? "",
+        postScript: ep.postScript ?? "",
       });
+
       const alias = node.alias?.trim() || ep.name.replace(/\s+/g, "_");
-      scope[alias] = {
-        status: result.status,
-        body: result.responseBody,
-        headers: result.responseHeaders,
-      };
+      scope[alias] = { status: result.status, body: result.responseBody, headers: result.responseHeaders };
       Object.assign(scope, result.extracted);
-      results.push({
-        nodeId: node.id,
-        endpointId: ep.id,
-        endpointName: ep.name,
-        result,
-      });
-      if (result.error || result.status >= 400) break;
+
+      results.push({ nodeId, endpointId: ep.id, endpointName: ep.name, alias, result });
+
+      // evaluate outgoing edges
+      const condCtx = {
+        status: result.status,
+        body: result.responseBody as unknown,
+        headers: result.responseHeaders,
+        vars: scope,
+      };
+      for (const edge of (outgoing.get(nodeId) ?? [])) {
+        if (executed.has(edge.target) || queued.has(edge.target)) continue;
+        if (evalCondition(edge.condition, condCtx)) {
+          queued.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
     }
 
-    if (env && Object.keys(scope).length) {
+    if (env) {
       await prisma.environment.update({
         where: { id: env.id },
         data: { variables: JSON.stringify(scope) },

@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpsPilot · 运维副驾驶</title>
+    <script>
+      try {
+        var s = JSON.parse(localStorage.getItem("ops-pilot-theme") || "{}");
+        var t = (s.state && s.state.theme) || "dark";
+        var r = t === "system"
+          ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          : t;
+        document.documentElement.classList.remove("dark", "light");
+        document.documentElement.classList.add(r);
+      } catch(e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

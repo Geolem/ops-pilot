@@ -2,34 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ── Theme CSS variables ─────────────────────────────────────────────── */
+:root, :root.dark {
   color-scheme: dark;
+  --c-bg-base:    11  15  26;
+  --c-bg-panel:   17  24  39;
+  --c-bg-elevated:26  34  52;
+  --c-bg-hover:   34  43  64;
+}
+:root.light {
+  color-scheme: light;
+  --c-bg-base:    241 245 249;   /* slate-100  */
+  --c-bg-panel:   255 255 255;
+  --c-bg-elevated:248 250 252;   /* slate-50   */
+  --c-bg-hover:   226 232 240;   /* slate-200  */
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+/* ── Base ─────────────────────────────────────────────────────────────── */
+html, body, #root { height: 100%; }
 
 body {
-  @apply bg-bg-base text-slate-200 antialiased;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", sans-serif;
+  @apply bg-bg-base antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.dark body  { @apply text-slate-200; }
+.light body { color: rgb(15 23 42); }
+
+/* noise + glow on dark only */
+.dark body {
   background-image:
-    radial-gradient(at 20% 10%, rgba(99, 102, 241, 0.12), transparent 50%),
-    radial-gradient(at 80% 0%, rgba(34, 211, 238, 0.08), transparent 45%);
+    radial-gradient(at 20% 10%, rgba(99,102,241,0.12), transparent 50%),
+    radial-gradient(at 80% 0%,  rgba(34,211,238,0.08), transparent 45%);
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #283049; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #3b4667; }
-::-webkit-scrollbar-track { background: transparent; }
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar              { width:10px; height:10px; }
+::-webkit-scrollbar-thumb        { border-radius:8px; }
+::-webkit-scrollbar-track        { background:transparent; }
+.dark  ::-webkit-scrollbar-thumb { background:#283049; }
+.dark  ::-webkit-scrollbar-thumb:hover { background:#3b4667; }
+.light ::-webkit-scrollbar-thumb { background:#cbd5e1; }
+.light ::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
 
+/* ── Component layer ─────────────────────────────────────────────────── */
 @layer components {
   .card {
-    @apply bg-bg-panel/70 backdrop-blur-md border border-white/5 rounded-xl shadow-soft;
+    @apply rounded-xl shadow-soft;
+    background: rgb(var(--c-bg-panel) / 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(var(--c-bg-elevated) / 0.5);
   }
+  .light .card {
+    background: rgb(255 255 255 / 0.9);
+    border-color: rgb(15 23 42 / 0.08);
+    box-shadow: 0 2px 16px rgb(15 23 42 / 0.06);
+  }
+
   .btn {
     @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
       transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
@@ -39,27 +68,72 @@ body {
       hover:shadow-glow hover:scale-[1.02] active:scale-[0.98];
   }
   .btn-ghost {
-    @apply btn text-slate-300 hover:bg-bg-hover hover:text-white;
+    @apply btn text-slate-400 hover:bg-bg-hover hover:text-white;
   }
+  .light .btn-ghost {
+    @apply text-slate-600 hover:text-slate-900;
+    --tw-bg-opacity: 1;
+  }
+  .light .btn-ghost:hover { background: rgb(var(--c-bg-hover) / 1); }
   .btn-danger {
-    @apply btn bg-rose-500/15 text-rose-300 hover:bg-rose-500/25;
+    @apply btn bg-rose-500/15 text-rose-400 hover:bg-rose-500/25;
   }
+
   .input {
-    @apply w-full bg-bg-elevated/70 border border-white/5 rounded-lg px-3 py-2 text-sm
-      text-slate-100 placeholder-slate-500 outline-none focus:border-brand/60
-      focus:ring-2 focus:ring-brand/30 transition-colors;
+    @apply w-full rounded-lg px-3 py-2 text-sm outline-none
+      focus:ring-2 focus:ring-brand/30 focus:border-brand/60 transition-colors;
+    background: rgb(var(--c-bg-elevated) / 0.7);
+    border: 1px solid rgb(var(--c-bg-elevated) / 0.5);
+    color: inherit;
   }
+  .dark .input   { @apply text-slate-100 placeholder-slate-500; border-color: rgb(255 255 255 / 0.05); }
+  .light .input  { color: rgb(15 23 42); border-color: rgb(15 23 42 / 0.1); }
+  .light .input::placeholder { color: rgb(100 116 139); }
+  .light .input:focus { border-color: rgb(99 102 241 / 0.6); }
+
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium;
   }
-  .method-GET    { @apply bg-emerald-500/15 text-emerald-300; }
-  .method-POST   { @apply bg-sky-500/15 text-sky-300; }
-  .method-PUT    { @apply bg-amber-500/15 text-amber-300; }
-  .method-PATCH  { @apply bg-fuchsia-500/15 text-fuchsia-300; }
-  .method-DELETE { @apply bg-rose-500/15 text-rose-300; }
-  .status-2xx { @apply text-emerald-300; }
-  .status-3xx { @apply text-sky-300; }
-  .status-4xx { @apply text-amber-300; }
-  .status-5xx { @apply text-rose-300; }
+
+  /* method chips – same in both themes */
+  .method-GET    { @apply bg-emerald-500/15 text-emerald-400; }
+  .method-POST   { @apply bg-sky-500/15     text-sky-400; }
+  .method-PUT    { @apply bg-amber-500/15   text-amber-400; }
+  .method-PATCH  { @apply bg-fuchsia-500/15 text-fuchsia-400; }
+  .method-DELETE { @apply bg-rose-500/15    text-rose-400; }
+
+  /* status text */
+  .status-2xx { @apply text-emerald-400; }
+  .status-3xx { @apply text-sky-400; }
+  .status-4xx { @apply text-amber-400; }
+  .status-5xx { @apply text-rose-400; }
   .status-0   { @apply text-slate-400; }
 }
+
+/* ── Light-mode text & border overrides ──────────────────────────────── */
+/* These remap the slate-* / white utility classes used throughout the app */
+.light .text-white       { color: rgb(15  23  42) !important; }
+.light .text-slate-50,
+.light .text-slate-100,
+.light .text-slate-200   { color: rgb(30  41  59) !important; }
+.light .text-slate-300   { color: rgb(51  65  85) !important; }
+.light .text-slate-400   { color: rgb(71  85 105) !important; }
+.light .text-slate-500   { color: rgb(100 116 139)!important; }
+
+/* white/X semi-transparent borders → dark equivalent */
+.light [class*="border-white\/"] { border-color: rgb(15 23 42 / 0.08) !important; }
+.light [class*="divide-white\/"] > * + * { border-color: rgb(15 23 42 / 0.08) !important; }
+
+/* white/X semi-transparent backgrounds → neutral */
+.light [class*="bg-white\/"] { background-color: rgb(15 23 42 / 0.03) !important; }
+
+/* Sidebar active indicator gradient in light */
+.light .bg-gradient-to-r.from-brand\/20 {
+  background: linear-gradient(to right, rgb(99 102 241 / 0.12), transparent) !important;
+}
+
+/* React Flow: light background */
+.light .react-flow__background { background-color: rgb(248 250 252) !important; }
+.light .react-flow__background pattern circle { fill: rgb(203 213 225) !important; }
+
+/* Monaco editor host – let it size itself; theme is set via prop */

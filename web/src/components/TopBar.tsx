@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, Project, Environment } from "@/lib/api";
 import { useAppStore } from "@/store/app";
 import { Globe2, FolderKanban } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
 
 export default function TopBar() {
   const { activeProjectId, activeEnvironmentId, setActiveProject, setActiveEnvironment } = useAppStore();
@@ -54,6 +55,7 @@ export default function TopBar() {
       </div>
 
       <div className="flex-1" />
+      <ThemeToggle />
       <div className="text-xs text-slate-500 hidden md:block">
         提示：接口中使用 <span className="text-brand-glow font-mono">{"{{token}}"}</span> 等变量占位符，环境变量会在请求时自动注入
       </div>
