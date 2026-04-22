@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String?
+  color        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  environments Environment[]
+  endpoints    Endpoint[]
+  flows        Flow[]
+}
+
+model Environment {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  baseUrl   String
+  headers   String   @default("{}")
+  variables String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}
+
+model Endpoint {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  method      String   @default("GET")
+  path        String
+  headers     String   @default("{}")
+  query       String   @default("{}")
+  body        String   @default("")
+  bodyType    String   @default("json")
+  tags        String   @default("[]")
+  extract     String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Flow {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  nodes       String   @default("[]")
+  edges       String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model History {
+  id          String   @id @default(cuid())
+  endpointId  String?
+  environmentId String?
+  method      String
+  url         String
+  status      Int?
+  durationMs  Int?
+  requestHeaders String @default("{}")
+  requestBody String?
+  responseHeaders String @default("{}")
+  responseBody String?
+  error       String?
+  createdAt   DateTime @default(now())
+}

@@ -1,0 +1,17 @@
+{
+  "name": "ops-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpsPilot - modern visual ops assistant for chaining API calls across projects and environments",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "start": "npm --prefix server run start",
+    "install:all": "npm install && npm --prefix server install && npm --prefix web install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
