@@ -13,6 +13,7 @@ import KeyValueEditor, { recordToRows, rowsToRecord, KV } from "@/components/Key
 import RequestRunner from "@/components/RequestRunner";
 import TagInput from "@/components/TagInput";
 import CurlImport from "@/components/CurlImport";
+import { parseCurl } from "@/lib/curlParse";
 import { safeJson } from "@/lib/utils";
 import { Environment } from "@/lib/api";
 
@@ -139,18 +140,17 @@ export default function EndpointsPage() {
               />
             </div>
             <button
-              className="btn-primary px-2"
+              className="btn-primary gap-1.5 px-3 text-xs"
               onClick={() => { setCurlPrefill(null); setSelectedId(null); setEditOpen(true); }}
-              title="新建接口"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" /> 新建
             </button>
             <button
-              className="btn-ghost px-2"
+              className="btn-ghost gap-1.5 px-3 text-xs"
               onClick={() => setCurlOpen(true)}
-              title="从 curl 导入"
+              title="粘贴 curl 命令快速创建接口"
             >
-              <Terminal className="w-4 h-4" />
+              <Terminal className="w-3.5 h-3.5" /> curl 导入
             </button>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -371,11 +371,41 @@ function EndpointEditor({
   const isNew = !endpoint;
   const [form, setForm] = useState(() => ({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) }));
   const [tab, setTab] = useState<"params" | "headers" | "body" | "extract" | "pre" | "post">("params");
+  const [curlText, setCurlText] = useState("");
+  const [curlOpen, setCurlOpen] = useState(false);
+  const [curlError, setCurlError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) setForm({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) });
+    if (open) {
+      setForm({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) });
+      setCurlText(""); setCurlOpen(false); setCurlError(null);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const applyCurl = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    try {
+      const parsed = parseCurl(trimmed);
+      // strip env baseUrl prefix if url is absolute
+      const envBaseUrl = form.projectId ? undefined : undefined; // best-effort, no env context here
+      setForm((prev) => ({
+        ...prev,
+        method: parsed.method,
+        path: parsed.url,
+        _headers: recordToRows(parsed.headers),
+        _query: recordToRows(parsed.query),
+        body: parsed.body,
+        bodyType: parsed.bodyType === "none" ? "json" : parsed.bodyType,
+      }));
+      setCurlOpen(false);
+      setCurlError(null);
+      setCurlText("");
+    } catch (e: any) {
+      setCurlError(e.message);
+    }
+  };
 
   const { data: allProjects = [] } = useQuery({
     queryKey: ["projects"],
@@ -415,6 +445,55 @@ function EndpointEditor({
   return (
     <Modal open={open} onClose={onClose} title={isNew ? "新建接口" : "编辑接口"} width="max-w-3xl">
       <div className="space-y-3">
+        {/* Inline curl import */}
+        {!curlOpen ? (
+          <div className="flex justify-end">
+            <button
+              className="btn-ghost text-xs gap-1.5"
+              onClick={() => { setCurlOpen(true); setCurlError(null); }}
+            >
+              <Terminal className="w-3.5 h-3.5" /> 从 curl 命令导入
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-brand/30 bg-brand/5 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                <Terminal className="w-3.5 h-3.5 text-brand-glow" /> 粘贴 curl 命令
+              </span>
+              <button className="btn-ghost p-1" onClick={() => { setCurlOpen(false); setCurlError(null); setCurlText(""); }}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <textarea
+              className="input font-mono text-xs min-h-[90px] resize-y"
+              placeholder={"curl -X POST 'https://api.example.com/users' \\\n  -H 'Authorization: Bearer {{token}}' \\\n  -d '{\"name\":\"{{name}}\"}' "}
+              value={curlText}
+              autoFocus
+              onChange={(e) => { setCurlText(e.target.value); setCurlError(null); }}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData("text");
+                if (text.trim().startsWith("curl")) {
+                  e.preventDefault();
+                  setCurlText(text);
+                  setTimeout(() => applyCurl(text), 0);
+                }
+              }}
+            />
+            {curlError && (
+              <div className="text-xs text-rose-300 bg-rose-500/10 rounded px-2 py-1.5">{curlError}</div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost text-xs" onClick={() => { setCurlOpen(false); setCurlError(null); setCurlText(""); }}>
+                取消
+              </button>
+              <button className="btn-primary text-xs" disabled={!curlText.trim()} onClick={() => applyCurl(curlText)}>
+                <Terminal className="w-3.5 h-3.5" /> 解析并填入
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-[120px_1fr] gap-2">
           <select
             className="input"
