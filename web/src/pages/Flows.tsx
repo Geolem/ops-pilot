@@ -1,31 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Plus,
   Play,
   Save,
   Trash2,
-  ArrowDown,
   Workflow,
   CheckCircle2,
   AlertTriangle,
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Node, Edge } from "reactflow";
 import { api, Endpoint, Flow } from "@/lib/api";
 import { useAppStore } from "@/store/app";
 import Empty from "@/components/Empty";
 import Modal from "@/components/Modal";
-import MethodBadge from "@/components/MethodBadge";
 import JsonEditor from "@/components/JsonEditor";
+import FlowCanvas from "@/components/flow/FlowCanvas";
+import { EndpointNodeData } from "@/components/flow/EndpointNode";
 import { statusClass, stringifyPretty } from "@/lib/utils";
 
-interface FlowNode {
-  id: string;
-  endpointId: string;
-  alias?: string;
-}
+type RunStates = Record<
+  string,
+  { status: "idle" | "running" | "success" | "error"; httpStatus?: number | null; durationMs?: number | null }
+>;
 
 export default function FlowsPage() {
   const qc = useQueryClient();
@@ -56,7 +56,12 @@ export default function FlowsPage() {
 
   const createFlow = useMutation({
     mutationFn: (name: string) =>
-      api.post<Flow>("/api/flows", { projectId: activeProjectId, name, nodes: "[]" }),
+      api.post<Flow>("/api/flows", {
+        projectId: activeProjectId,
+        name,
+        nodes: "[]",
+        edges: "[]",
+      }),
     onSuccess: (flow) => {
       qc.invalidateQueries({ queryKey: ["flows"] });
       setSelectedId(flow.id);
@@ -74,8 +79,8 @@ export default function FlowsPage() {
   }
 
   return (
-    <div className="h-full grid grid-cols-[280px_1fr]">
-      <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col">
+    <div className="h-full grid grid-cols-[260px_1fr]">
+      <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col min-h-0">
         <div className="p-3 border-b border-white/5 flex items-center gap-2">
           <div className="text-sm text-slate-300 flex items-center gap-1.5 flex-1">
             <Workflow className="w-4 h-4" />
@@ -104,7 +109,7 @@ export default function FlowsPage() {
         </div>
       </div>
 
-      <div className="overflow-auto">
+      <div className="min-h-0 overflow-hidden">
         {selected ? (
           <FlowEditor
             key={selected.id}
@@ -151,26 +156,18 @@ function FlowEditor({
   environmentId: string | null;
 }) {
   const qc = useQueryClient();
-  const [nodes, setNodes] = useState<FlowNode[]>(() => {
-    try {
-      return JSON.parse(flow.nodes) as FlowNode[];
-    } catch {
-      return [];
-    }
-  });
+  const [graph, setGraph] = useState<{ nodes: Node<EndpointNodeData>[]; edges: Edge[] }>(() => hydrate(flow, endpoints));
   const [name, setName] = useState(flow.name);
   const [description, setDescription] = useState(flow.description ?? "");
   const [runResult, setRunResult] = useState<any>(null);
+  const [runStates, setRunStates] = useState<RunStates>({});
 
   useEffect(() => {
-    try {
-      setNodes(JSON.parse(flow.nodes));
-    } catch {
-      setNodes([]);
-    }
+    setGraph(hydrate(flow, endpoints));
     setName(flow.name);
     setDescription(flow.description ?? "");
     setRunResult(null);
+    setRunStates({});
   }, [flow.id]);
 
   const save = useMutation({
@@ -178,7 +175,18 @@ function FlowEditor({
       api.patch<Flow>(`/api/flows/${flow.id}`, {
         name,
         description,
-        nodes: JSON.stringify(nodes),
+        nodes: JSON.stringify(
+          graph.nodes.map((n) => ({
+            id: n.id,
+            type: "endpoint",
+            position: n.position,
+            data: {
+              endpointId: (n.data as any).endpointId ?? n.data.endpoint?.id ?? "",
+              alias: n.data.alias,
+            },
+          }))
+        ),
+        edges: JSON.stringify(graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flows"] });
@@ -195,49 +203,85 @@ function FlowEditor({
   });
 
   const run = useMutation({
-    mutationFn: () =>
-      api.post("/api/flows/run", {
+    mutationFn: () => {
+      const payloadNodes = graph.nodes.map((n) => ({
+        id: n.id,
+        endpointId: (n.data as any).endpointId ?? n.data.endpoint?.id ?? "",
+        alias: n.data.alias,
+      })).filter((n) => n.endpointId);
+      const payloadEdges = graph.edges.map((e) => ({ source: e.source, target: e.target }));
+      setRunStates(Object.fromEntries(payloadNodes.map((n) => [n.id, { status: "running" }])));
+      return api.post<any>("/api/flows/run", {
         environmentId: environmentId ?? undefined,
-        nodes,
-      }),
-    onSuccess: (r) => setRunResult(r),
+        nodes: payloadNodes,
+        edges: payloadEdges,
+      });
+    },
+    onSuccess: (r) => {
+      setRunResult(r);
+      const states: RunStates = {};
+      for (const step of r.steps) {
+        const s = step.result;
+        states[step.nodeId] = {
+          status: s && !s.error && s.status < 400 ? "success" : "error",
+          httpStatus: s?.status,
+          durationMs: s?.durationMs,
+        };
+      }
+      for (const n of graph.nodes) if (!states[n.id]) states[n.id] = { status: "idle" };
+      setRunStates(states);
+    },
+    onError: () => {
+      setRunStates({});
+      toast.error("执行失败");
+    },
   });
 
   const addNode = () => {
-    if (!endpoints[0]) {
-      toast.error("先去「接口」创建至少一个接口");
-      return;
-    }
-    setNodes([
-      ...nodes,
-      { id: Math.random().toString(36).slice(2, 9), endpointId: endpoints[0].id },
-    ]);
+    const id = Math.random().toString(36).slice(2, 9);
+    const last = graph.nodes[graph.nodes.length - 1];
+    const position = last
+      ? { x: last.position.x, y: last.position.y + 180 }
+      : { x: 80, y: 80 };
+    const newNode: Node<EndpointNodeData> = {
+      id,
+      type: "endpoint",
+      position,
+      data: {
+        endpoint: endpoints[0] ?? null,
+        endpoints,
+        alias: "",
+      } as EndpointNodeData & { endpointId: string },
+    };
+    (newNode.data as any).endpointId = endpoints[0]?.id ?? "";
+    setGraph({ nodes: [...graph.nodes, newNode], edges: graph.edges });
   };
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 space-y-2">
-          <input
-            className="input text-base font-medium"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <input
-            className="input"
-            value={description ?? ""}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="描述（可选）"
-          />
-        </div>
+    <div className="h-full flex flex-col">
+      <div className="px-5 py-3 border-b border-white/5 bg-bg-panel/20 flex items-center gap-3">
+        <input
+          className="input text-sm font-medium max-w-xs"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          className="input text-sm flex-1"
+          value={description ?? ""}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="描述（可选）"
+        />
         <div className="flex gap-1">
+          <button className="btn-ghost" onClick={addNode}>
+            <Plus className="w-3.5 h-3.5" /> 添加节点
+          </button>
           <button className="btn-ghost" onClick={() => save.mutate()}>
             <Save className="w-3.5 h-3.5" /> 保存
           </button>
           <button
             className="btn-primary"
             onClick={() => run.mutate()}
-            disabled={run.isPending || nodes.length === 0 || !environmentId}
+            disabled={run.isPending || graph.nodes.length === 0 || !environmentId}
             title={environmentId ? "" : "请先在顶部选择环境"}
           >
             <Play className="w-3.5 h-3.5" />
@@ -252,84 +296,93 @@ function FlowEditor({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <AnimatePresence>
-          {nodes.map((n, i) => (
-            <motion.div
-              key={n.id}
-              layout
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="card p-3"
-            >
-              <div className="flex items-center gap-2">
-                <span className="chip bg-white/5 text-slate-400">#{i + 1}</span>
-                <select
-                  className="input py-1.5 flex-1"
-                  value={n.endpointId}
-                  onChange={(e) => {
-                    const next = nodes.slice();
-                    next[i] = { ...n, endpointId: e.target.value };
-                    setNodes(next);
-                  }}
-                >
-                  {endpoints.map((ep) => (
-                    <option key={ep.id} value={ep.id}>
-                      [{ep.method}] {ep.name} — {ep.path}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="input py-1.5 w-44"
-                  placeholder="别名（可选）"
-                  value={n.alias ?? ""}
-                  onChange={(e) => {
-                    const next = nodes.slice();
-                    next[i] = { ...n, alias: e.target.value };
-                    setNodes(next);
-                  }}
-                />
-                <button
-                  className="btn-ghost p-1.5 text-rose-300"
-                  onClick={() => setNodes(nodes.filter((_, idx) => idx !== i))}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {i < nodes.length - 1 && (
-                <div className="flex justify-center mt-2 -mb-1 text-slate-500">
-                  <ArrowDown className="w-4 h-4 animate-pulse" />
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        <button className="btn-ghost w-full justify-center py-3 border border-dashed border-white/10" onClick={addNode}>
-          <Plus className="w-4 h-4" /> 添加步骤
-        </button>
+      <div className="flex-1 min-h-0 relative">
+        <FlowCanvas value={graph} onChange={setGraph} endpoints={endpoints} runStates={runStates} />
+        {graph.nodes.length === 0 && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="text-sm text-slate-500 pointer-events-auto">
+              点击顶部「添加节点」，然后拖动连接节点间的圆点来定义执行顺序
+            </div>
+          </div>
+        )}
       </div>
 
-      {runResult && <FlowRunResult result={runResult} />}
+      {runResult && (
+        <div className="border-t border-white/5 max-h-[40%] overflow-auto p-4 bg-bg-panel/30">
+          <FlowRunResult result={runResult} />
+        </div>
+      )}
     </div>
   );
 }
 
+function hydrate(flow: Flow, endpoints: Endpoint[]): { nodes: Node<EndpointNodeData>[]; edges: Edge[] } {
+  let rawNodes: any[] = [];
+  let rawEdges: any[] = [];
+  try {
+    rawNodes = JSON.parse(flow.nodes || "[]");
+  } catch {
+    rawNodes = [];
+  }
+  try {
+    rawEdges = JSON.parse(flow.edges || "[]");
+  } catch {
+    rawEdges = [];
+  }
+
+  const isReactFlowFormat = rawNodes.length > 0 && rawNodes[0]?.position;
+  let nodes: Node<EndpointNodeData>[];
+  let edges: Edge[];
+
+  if (isReactFlowFormat) {
+    nodes = rawNodes.map((n) => ({
+      id: n.id,
+      type: "endpoint",
+      position: n.position,
+      data: {
+        endpointId: n.data?.endpointId,
+        alias: n.data?.alias,
+        endpoint: endpoints.find((e) => e.id === n.data?.endpointId) ?? null,
+        endpoints,
+      } as EndpointNodeData & { endpointId: string },
+    }));
+    edges = rawEdges.map((e) => ({
+      id: e.id ?? `e-${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+    }));
+  } else {
+    nodes = rawNodes.map((n, i) => ({
+      id: n.id ?? String(i),
+      type: "endpoint",
+      position: { x: 80, y: 80 + i * 180 },
+      data: {
+        endpointId: n.endpointId,
+        alias: n.alias,
+        endpoint: endpoints.find((e) => e.id === n.endpointId) ?? null,
+        endpoints,
+      } as EndpointNodeData & { endpointId: string },
+    }));
+    edges = [];
+    for (let i = 0; i < nodes.length - 1; i++) {
+      edges.push({ id: `e-${nodes[i].id}-${nodes[i + 1].id}`, source: nodes[i].id, target: nodes[i + 1].id });
+    }
+  }
+
+  return { nodes, edges };
+}
+
 function FlowRunResult({ result }: { result: any }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="card p-4 space-y-3"
-    >
-      <div className="font-medium text-white">执行结果</div>
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+      <div className="font-medium text-white text-sm">执行结果</div>
       <div className="space-y-2">
         {result.steps.map((s: any, i: number) => {
           const r = s.result;
           const ok = r && !r.error && r.status < 400;
           return (
             <div key={s.nodeId ?? i} className="rounded-lg border border-white/5 bg-bg-elevated/40 p-3">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm flex-wrap">
                 {ok ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 ) : (

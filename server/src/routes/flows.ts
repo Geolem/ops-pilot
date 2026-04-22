@@ -31,8 +31,53 @@ const flowRunSchema = z.object({
       })
     )
     .min(1),
+  edges: z
+    .array(
+      z.object({
+        source: z.string(),
+        target: z.string(),
+      })
+    )
+    .optional(),
   extraVariables: z.record(z.unknown()).optional(),
 });
+
+function orderNodesByEdges(
+  nodes: { id: string; endpointId: string; alias?: string }[],
+  edges: { source: string; target: string }[] | undefined
+) {
+  if (!edges || edges.length === 0) return nodes;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = new Map<string, number>();
+  const next = new Map<string, string[]>();
+  for (const n of nodes) {
+    incoming.set(n.id, 0);
+    next.set(n.id, []);
+  }
+  for (const e of edges) {
+    if (!byId.has(e.source) || !byId.has(e.target)) continue;
+    incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
+    next.get(e.source)!.push(e.target);
+  }
+  const queue: string[] = [];
+  for (const [id, n] of incoming) if (n === 0) queue.push(id);
+  const ordered: typeof nodes = [];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = byId.get(id);
+    if (node) ordered.push(node);
+    for (const target of next.get(id) ?? []) {
+      const remaining = (incoming.get(target) ?? 0) - 1;
+      incoming.set(target, remaining);
+      if (remaining <= 0) queue.push(target);
+    }
+  }
+  for (const n of nodes) if (!seen.has(n.id)) ordered.push(n);
+  return ordered;
+}
 
 export async function flowRoutes(app: FastifyInstance) {
   app.get("/api/flows", async (req) => {
@@ -78,7 +123,9 @@ export async function flowRoutes(app: FastifyInstance) {
     const scope: Record<string, unknown> = { ...baseVars, ...(input.extraVariables ?? {}) };
     const results: any[] = [];
 
-    for (const node of input.nodes) {
+    const ordered = orderNodesByEdges(input.nodes, input.edges);
+
+    for (const node of ordered) {
       const ep = await prisma.endpoint.findUnique({ where: { id: node.endpointId } });
       if (!ep) {
         results.push({ nodeId: node.id, error: "endpoint not found" });
@@ -98,7 +145,7 @@ export async function flowRoutes(app: FastifyInstance) {
         variables: scope,
         extract: epExtract,
       });
-      const alias = node.alias ?? ep.name.replace(/\s+/g, "_");
+      const alias = node.alias?.trim() || ep.name.replace(/\s+/g, "_");
       scope[alias] = {
         status: result.status,
         body: result.responseBody,
@@ -112,6 +159,13 @@ export async function flowRoutes(app: FastifyInstance) {
         result,
       });
       if (result.error || result.status >= 400) break;
+    }
+
+    if (env && Object.keys(scope).length) {
+      await prisma.environment.update({
+        where: { id: env.id },
+        data: { variables: JSON.stringify(scope) },
+      });
     }
 
     return { scope, steps: results };

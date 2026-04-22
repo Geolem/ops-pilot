@@ -132,4 +132,80 @@ export async function executeRoutes(app: FastifyInstance) {
       take: limit ? Math.min(Number(limit) || 20, 200) : 50,
     });
   });
+
+  app.get("/api/history/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    return prisma.history.findUnique({ where: { id } });
+  });
+
+  app.post("/api/history/:id/replay", async (req) => {
+    const { id } = req.params as { id: string };
+    const record = await prisma.history.findUnique({ where: { id } });
+    if (!record) return { error: "not found" };
+
+    if (record.endpointId) {
+      const ep = await prisma.endpoint.findUnique({ where: { id: record.endpointId } });
+      if (ep) {
+        const env = record.environmentId
+          ? await prisma.environment.findUnique({ where: { id: record.environmentId } })
+          : null;
+        const envVars = env ? safeParseJson<Record<string, unknown>>(env.variables, {}) : {};
+        const envHeaders = env ? safeParseJson<Record<string, string>>(env.headers, {}) : {};
+        const epHeaders = safeParseJson<Record<string, string>>(ep.headers, {});
+        const epQuery = safeParseJson<Record<string, string>>(ep.query, {});
+        const epExtract = safeParseJson<Record<string, string>>(ep.extract, {});
+        const result = await executeRequest({
+          method: ep.method,
+          baseUrl: env?.baseUrl ?? "",
+          path: ep.path,
+          headers: { ...envHeaders, ...epHeaders },
+          query: epQuery,
+          body: ep.body,
+          bodyType: (ep.bodyType as any) ?? "json",
+          variables: envVars,
+          extract: epExtract,
+        });
+        await prisma.history.create({
+          data: {
+            endpointId: ep.id,
+            environmentId: env?.id,
+            method: result.method,
+            url: result.url,
+            status: result.status,
+            durationMs: result.durationMs,
+            requestHeaders: JSON.stringify(result.requestHeaders),
+            requestBody: result.requestBody,
+            responseHeaders: JSON.stringify(result.responseHeaders),
+            responseBody: result.responseText?.slice(0, 200_000) ?? null,
+            error: result.error ?? null,
+          },
+        });
+        return result;
+      }
+    }
+
+    const requestHeaders = safeParseJson<Record<string, string>>(record.requestHeaders, {});
+    const result = await executeRequest({
+      method: record.method,
+      baseUrl: record.url,
+      path: "",
+      headers: requestHeaders,
+      body: record.requestBody ?? "",
+      bodyType: record.requestBody?.trim().startsWith("{") ? "json" : "text",
+    });
+    await prisma.history.create({
+      data: {
+        method: result.method,
+        url: result.url,
+        status: result.status,
+        durationMs: result.durationMs,
+        requestHeaders: JSON.stringify(result.requestHeaders),
+        requestBody: result.requestBody,
+        responseHeaders: JSON.stringify(result.responseHeaders),
+        responseBody: result.responseText?.slice(0, 200_000) ?? null,
+        error: result.error ?? null,
+      },
+    });
+    return result;
+  });
 }

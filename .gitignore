@@ -10,5 +10,6 @@ data/
 *.db
 *.db-journal
 coverage/
+*.tsbuildinfo
 .vscode/
 .idea/

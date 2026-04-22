@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Edit3, Trash2, Activity, Search, Save } from "lucide-react";
+import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, Endpoint } from "@/lib/api";
 import { useAppStore } from "@/store/app";
@@ -11,16 +11,31 @@ import Empty from "@/components/Empty";
 import JsonEditor from "@/components/JsonEditor";
 import KeyValueEditor, { recordToRows, rowsToRecord, KV } from "@/components/KeyValueEditor";
 import RequestRunner from "@/components/RequestRunner";
+import TagInput from "@/components/TagInput";
 import { safeJson, stringifyPretty } from "@/lib/utils";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+const UNTAGGED = "__untagged__";
+
+function parseTags(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) return v.map(String).filter(Boolean);
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
 
 export default function EndpointsPage() {
   const qc = useQueryClient();
   const { activeProjectId, activeEnvironmentId } = useAppStore();
   const [keyword, setKeyword] = useState("");
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [methodFilter, setMethodFilter] = useState<string>("");
 
   const { data: endpoints = [] } = useQuery({
     queryKey: ["endpoints", activeProjectId],
@@ -31,15 +46,61 @@ export default function EndpointsPage() {
     enabled: !!activeProjectId,
   });
 
-  const filtered = useMemo(() => {
-    if (!keyword) return endpoints;
-    const k = keyword.toLowerCase();
-    return endpoints.filter(
-      (e) => e.name.toLowerCase().includes(k) || e.path.toLowerCase().includes(k)
+  const allTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ep of endpoints) {
+      const tags = parseTags(ep.tags);
+      if (tags.length === 0) counts.set(UNTAGGED, (counts.get(UNTAGGED) ?? 0) + 1);
+      for (const t of tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) =>
+      a[0] === UNTAGGED ? 1 : b[0] === UNTAGGED ? -1 : a[0].localeCompare(b[0])
     );
-  }, [endpoints, keyword]);
+  }, [endpoints]);
+
+  const filtered = useMemo(() => {
+    const k = keyword.trim().toLowerCase();
+    return endpoints.filter((e) => {
+      if (methodFilter && e.method.toUpperCase() !== methodFilter) return false;
+      if (activeTags.size > 0) {
+        const tags = parseTags(e.tags);
+        const hasUntagged = activeTags.has(UNTAGGED);
+        const matchesTag = tags.some((t) => activeTags.has(t)) || (hasUntagged && tags.length === 0);
+        if (!matchesTag) return false;
+      }
+      if (!k) return true;
+      return (
+        e.name.toLowerCase().includes(k) ||
+        e.path.toLowerCase().includes(k) ||
+        (e.description ?? "").toLowerCase().includes(k) ||
+        parseTags(e.tags).some((t) => t.toLowerCase().includes(k))
+      );
+    });
+  }, [endpoints, keyword, activeTags, methodFilter]);
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, Endpoint[]>();
+    for (const ep of filtered) {
+      const tags = parseTags(ep.tags);
+      const keys = tags.length ? tags : [UNTAGGED];
+      for (const k of keys) {
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(ep);
+      }
+    }
+    return Array.from(groups.entries()).sort((a, b) =>
+      a[0] === UNTAGGED ? 1 : b[0] === UNTAGGED ? -1 : a[0].localeCompare(b[0])
+    );
+  }, [filtered]);
 
   const selected = endpoints.find((e) => e.id === selectedId) ?? filtered[0];
+
+  const toggleTag = (t: string) => {
+    const next = new Set(activeTags);
+    if (next.has(t)) next.delete(t);
+    else next.add(t);
+    setActiveTags(next);
+  };
 
   if (!activeProjectId) {
     return (
@@ -51,53 +112,112 @@ export default function EndpointsPage() {
 
   return (
     <div className="h-full grid grid-cols-[320px_1fr]">
-      <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col">
-        <div className="p-3 border-b border-white/5 flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              className="input pl-8"
-              placeholder="搜索接口"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
+      <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col min-h-0">
+        <div className="p-3 border-b border-white/5 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                className="input pl-8"
+                placeholder="搜索名称/路径/标签"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+            <button
+              className="btn-primary px-2"
+              onClick={() => {
+                setSelectedId(null);
+                setEditOpen(true);
+              }}
+              title="新建接口"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            className="btn-primary px-2"
-            onClick={() => {
-              setSelectedId(null);
-              setEditOpen(true);
-            }}
-            title="新建接口"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select
+              className="input py-1 text-xs w-auto"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+            >
+              <option value="">全部方法</option>
+              {METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            {(activeTags.size > 0 || keyword || methodFilter) && (
+              <button
+                className="btn-ghost text-[11px] px-2 py-1"
+                onClick={() => {
+                  setActiveTags(new Set());
+                  setKeyword("");
+                  setMethodFilter("");
+                }}
+              >
+                <X className="w-3 h-3" /> 清空筛选
+              </button>
+            )}
+          </div>
+          {allTags.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              {allTags.map(([t, count]) => {
+                const active = activeTags.has(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => toggleTag(t)}
+                    className={`chip text-[11px] ${
+                      active
+                        ? "bg-brand/25 text-white ring-1 ring-brand/40"
+                        : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                    }`}
+                  >
+                    {t === UNTAGGED ? "未分组" : t}
+                    <span className="text-[10px] opacity-70">·{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
+
         <div className="flex-1 overflow-auto p-2">
           {filtered.length === 0 ? (
-            <Empty icon={<Activity className="w-5 h-5" />} title="暂无接口" />
+            <Empty icon={<Activity className="w-5 h-5" />} title="暂无匹配接口" />
           ) : (
             <AnimatePresence>
-              {filtered.map((ep) => (
-                <motion.button
-                  key={ep.id}
-                  layout
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setSelectedId(ep.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md my-0.5 transition-colors ${
-                    selected?.id === ep.id
-                      ? "bg-brand/15 ring-1 ring-brand/30"
-                      : "hover:bg-bg-hover/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <MethodBadge method={ep.method} />
-                    <span className="text-sm text-white truncate flex-1">{ep.name}</span>
+              {grouped.map(([tag, items]) => (
+                <motion.div key={tag} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <div className="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
+                    <TagIcon className="w-3 h-3" />
+                    {tag === UNTAGGED ? "未分组" : tag}
+                    <span className="opacity-70">({items.length})</span>
                   </div>
-                  <div className="text-[11px] font-mono text-slate-500 truncate">{ep.path}</div>
-                </motion.button>
+                  {items.map((ep) => (
+                    <motion.button
+                      key={`${tag}-${ep.id}`}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setSelectedId(ep.id)}
+                      className={`w-full text-left px-3 py-2 rounded-md my-0.5 transition-colors ${
+                        selected?.id === ep.id
+                          ? "bg-brand/15 ring-1 ring-brand/30"
+                          : "hover:bg-bg-hover/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <MethodBadge method={ep.method} />
+                        <span className="text-sm text-white truncate flex-1">{ep.name}</span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-500 truncate">{ep.path}</div>
+                    </motion.button>
+                  ))}
+                </motion.div>
               ))}
             </AnimatePresence>
           )}
@@ -120,6 +240,7 @@ export default function EndpointsPage() {
         open={editOpen}
         endpoint={selected && editOpen ? selected : null}
         projectId={activeProjectId}
+        existingTags={allTags.filter(([t]) => t !== UNTAGGED).map(([t]) => t)}
         onClose={() => setEditOpen(false)}
         onSaved={(id) => {
           qc.invalidateQueries({ queryKey: ["endpoints", activeProjectId] });
@@ -149,16 +270,23 @@ function EndpointDetail({
     },
   });
 
+  const tags = parseTags(endpoint.tags);
+
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
             <MethodBadge method={endpoint.method} />
             <h2 className="text-lg font-semibold text-white">{endpoint.name}</h2>
+            {tags.map((t) => (
+              <span key={t} className="chip bg-brand/15 text-brand-glow text-[11px]">
+                {t}
+              </span>
+            ))}
           </div>
           {endpoint.description && (
-            <p className="text-sm text-slate-400 mt-1">{endpoint.description}</p>
+            <p className="text-sm text-slate-400">{endpoint.description}</p>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -185,12 +313,14 @@ function EndpointEditor({
   open,
   endpoint,
   projectId,
+  existingTags,
   onClose,
   onSaved,
 }: {
   open: boolean;
   endpoint: Endpoint | null;
   projectId: string;
+  existingTags: string[];
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
@@ -206,10 +336,12 @@ function EndpointEditor({
         headers: JSON.stringify(rowsToRecord(form._headers as KV[])),
         query: JSON.stringify(rowsToRecord(form._query as KV[])),
         extract: JSON.stringify(rowsToRecord(form._extract as KV[])),
+        tags: JSON.stringify(form._tags),
       };
       delete (payload as any)._headers;
       delete (payload as any)._query;
       delete (payload as any)._extract;
+      delete (payload as any)._tags;
       if (form.id) return api.patch<Endpoint>(`/api/endpoints/${form.id}`, payload);
       return api.post<Endpoint>("/api/endpoints", payload);
     },
@@ -222,6 +354,8 @@ function EndpointEditor({
   });
 
   if (!open) return null;
+
+  const suggested = existingTags.filter((t) => !form._tags.includes(t)).slice(0, 8);
 
   return (
     <Modal open={open} onClose={onClose} title={isNew ? "新建接口" : "编辑接口"} width="max-w-3xl">
@@ -258,6 +392,29 @@ function EndpointEditor({
             value={form.description ?? ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
+        </div>
+
+        <div>
+          <div className="text-xs text-slate-400 mb-1.5">标签（用于分组和搜索）</div>
+          <TagInput
+            value={form._tags}
+            onChange={(tags) => setForm({ ...form, _tags: tags })}
+            placeholder="例如：订阅、用户、运维；回车或逗号分隔"
+          />
+          {suggested.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+              <span className="text-[11px] text-slate-500">已有：</span>
+              {suggested.map((t) => (
+                <button
+                  key={t}
+                  className="chip bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white text-[11px]"
+                  onClick={() => setForm({ ...form, _tags: [...form._tags, t] })}
+                >
+                  + {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-b border-white/5 flex gap-1">
@@ -354,7 +511,7 @@ function makeDraft(ep: Endpoint | null, projectId: string) {
     path: ep?.path ?? "",
     body: ep?.body ?? "",
     bodyType: ep?.bodyType ?? "json",
-    tags: ep?.tags ?? "[]",
+    _tags: parseTags(ep?.tags),
     _headers: recordToRows(safeJson(ep?.headers, {}) as Record<string, string>),
     _query: recordToRows(safeJson(ep?.query, {}) as Record<string, string>),
     _extract: recordToRows(safeJson(ep?.extract, {}) as Record<string, string>),
