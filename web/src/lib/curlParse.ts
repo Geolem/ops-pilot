@@ -64,8 +64,8 @@ export function parseCurl(input: string): ParsedCurl {
   let method: string | null = null;
   let rawUrl: string | null = null;
   const headers: Record<string, string> = {};
-  const formParts: string[] = [];
-  let body = "";
+  const dataParts: string[] = [];   // accumulates every --data / -d value
+  const formParts: string[] = [];   // accumulates --data-urlencode / -F values
   let bodyType: "json" | "form" | "text" | "none" = "none";
 
   for (let i = 1; i < tokens.length; i++) {
@@ -79,9 +79,8 @@ export function parseCurl(input: string): ParsedCurl {
       const colon = h.indexOf(":");
       if (colon > 0) headers[h.slice(0, colon).trim()] = h.slice(colon + 1).trim();
     } else if (tok === "-d" || tok === "--data" || tok === "--data-raw" || tok === "--data-binary" || tok === "--data-ascii") {
-      body = peek();
+      dataParts.push(peek());
       if (!method) method = "POST";
-      bodyType = body.trimStart().startsWith("{") || body.trimStart().startsWith("[") ? "json" : "text";
     } else if (tok === "--data-urlencode") {
       formParts.push(peek());
       if (!method) method = "POST";
@@ -119,8 +118,26 @@ export function parseCurl(input: string): ParsedCurl {
 
   if (!rawUrl) throw new Error("未找到 URL");
 
+  // Resolve body & bodyType from accumulated parts
+  let body = "";
   if (formParts.length) {
-    body = formParts.join("&");
+    // --data-urlencode / -F always form
+    body = [...dataParts, ...formParts].join("&");
+    bodyType = "form";
+  } else if (dataParts.length === 1) {
+    const d = dataParts[0];
+    const trimmed = d.trimStart();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      body = d;
+      bodyType = "json";
+    } else {
+      // single --data with key=value → still form
+      body = d;
+      bodyType = d.includes("=") ? "form" : "text";
+    }
+  } else if (dataParts.length > 1) {
+    // multiple --data flags → join as form body
+    body = dataParts.join("&");
     bodyType = "form";
   }
 
