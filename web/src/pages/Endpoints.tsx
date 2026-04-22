@@ -374,6 +374,11 @@ function EndpointEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.get<{ id: string; name: string }[]>("/api/projects"),
+  });
+
   const qc = useQueryClient();
   const save = useMutation({
     mutationFn: async () => {
@@ -440,6 +445,20 @@ function EndpointEditor({
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
         </div>
+        {!isNew && allProjects.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 shrink-0">所属项目</span>
+            <select
+              className="input py-1.5 text-xs"
+              value={form.projectId}
+              onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+            >
+              {allProjects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <div className="text-xs text-slate-400 mb-1.5">标签（用于分组和搜索）</div>

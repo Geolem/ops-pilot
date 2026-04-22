@@ -7,8 +7,11 @@ import { api, Project, Environment } from "@/lib/api";
 import Modal from "@/components/Modal";
 import Empty from "@/components/Empty";
 import JsonEditor from "@/components/JsonEditor";
+import KeyValueEditor, { KV, recordToRows, rowsToRecord } from "@/components/KeyValueEditor";
 import { useAppStore } from "@/store/app";
 import { safeJson, stringifyPretty } from "@/lib/utils";
+
+type EnvDraft = Partial<Environment> & { _headers: KV[] };
 
 export default function ProjectsPage() {
   const qc = useQueryClient();
@@ -20,7 +23,7 @@ export default function ProjectsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<Project> | null>(null);
   const [envOpen, setEnvOpen] = useState(false);
-  const [envEditing, setEnvEditing] = useState<Partial<Environment> | null>(null);
+  const [envEditing, setEnvEditing] = useState<EnvDraft | null>(null);
 
   const saveProject = useMutation({
     mutationFn: async (p: Partial<Project>) => {
@@ -72,9 +75,11 @@ export default function ProjectsPage() {
   };
 
   const openEnvEdit = (projectId: string, env?: Environment) => {
-    setEnvEditing(
-      env ?? { projectId, name: "", baseUrl: "", headers: "{}", variables: "{}" }
-    );
+    const base = env ?? { projectId, name: "", baseUrl: "", headers: "{}", variables: "{}" };
+    setEnvEditing({
+      ...base,
+      _headers: recordToRows(safeJson(base.headers, {}) as Record<string, string>),
+    });
     setEnvOpen(true);
   };
 
@@ -265,15 +270,12 @@ export default function ProjectsPage() {
                 />
               </Field>
             </div>
-            <Field label="公共请求头（JSON）">
-              <JsonEditor
-                value={
-                  typeof envEditing.headers === "string"
-                    ? envEditing.headers
-                    : stringifyPretty(envEditing.headers ?? {})
-                }
-                onChange={(v) => setEnvEditing({ ...envEditing, headers: v })}
-                height={140}
+            <Field label="公共请求头">
+              <KeyValueEditor
+                rows={envEditing._headers}
+                onChange={(rows) => setEnvEditing({ ...envEditing, _headers: rows })}
+                keyPlaceholder="Authorization / Cookie / X-Custom"
+                valuePlaceholder="值（Cookie 多个用分号隔开：a=1; b=2）"
               />
             </Field>
             <Field
@@ -309,10 +311,11 @@ export default function ProjectsPage() {
                     }
                   };
                   try {
+                    const { _headers, ...rest } = envEditing;
                     saveEnv.mutate({
-                      ...envEditing,
-                      headers: normalize(envEditing.headers),
-                      variables: normalize(envEditing.variables),
+                      ...rest,
+                      headers: JSON.stringify(rowsToRecord(_headers)),
+                      variables: normalize(rest.variables),
                     });
                   } catch {
                     /* surfaced via toast */
