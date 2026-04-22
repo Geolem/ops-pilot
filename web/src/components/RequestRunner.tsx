@@ -11,15 +11,23 @@ import Modal from "./Modal";
 
 type Tab = "body" | "table" | "headers" | "extracted" | "request" | "log";
 
-// Resolve a JSON array from the response body (top-level or common "data"/"list"/"items" key)
+// BFS through the JSON tree to find the first non-empty array of objects,
+// regardless of key name, casing, or nesting depth (max 6 levels).
 function resolveArray(body: unknown): Record<string, unknown>[] | null {
-  if (Array.isArray(body) && body.length > 0 && typeof body[0] === "object") {
-    return body as Record<string, unknown>[];
-  }
-  if (body && typeof body === "object") {
-    for (const key of ["data", "list", "items", "records", "rows", "result"]) {
-      const v = (body as any)[key];
-      if (Array.isArray(v) && v.length > 0 && typeof v[0] === "object") return v;
+  const isObjArray = (v: unknown): v is Record<string, unknown>[] =>
+    Array.isArray(v) && v.length > 0 && v.every((x) => x !== null && typeof x === "object" && !Array.isArray(x));
+
+  if (isObjArray(body)) return body;
+
+  const queue: { node: unknown; depth: number }[] = [{ node: body, depth: 0 }];
+  while (queue.length) {
+    const { node, depth } = queue.shift()!;
+    if (!node || typeof node !== "object" || Array.isArray(node) || depth > 6) continue;
+    for (const val of Object.values(node as object)) {
+      if (isObjArray(val)) return val as Record<string, unknown>[];
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        queue.push({ node: val, depth: depth + 1 });
+      }
     }
   }
   return null;
