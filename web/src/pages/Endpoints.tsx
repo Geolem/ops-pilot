@@ -247,6 +247,7 @@ export default function EndpointsPage() {
           <EndpointDetail
             endpoint={selected}
             environmentId={activeEnvironmentId}
+            projectId={activeProjectId}
             onEdit={() => setEditOpen(true)}
           />
         ) : (
@@ -294,10 +295,12 @@ export default function EndpointsPage() {
 function EndpointDetail({
   endpoint,
   environmentId,
+  projectId,
   onEdit,
 }: {
   endpoint: Endpoint;
   environmentId: string | null;
+  projectId: string | null;
   onEdit: () => void;
 }) {
   const qc = useQueryClient();
@@ -343,7 +346,7 @@ function EndpointDetail({
         </div>
       </div>
 
-      <RequestRunner endpoint={endpoint} environmentId={environmentId} />
+      <RequestRunner endpoint={endpoint} environmentId={environmentId} projectId={projectId} />
     </div>
   );
 }

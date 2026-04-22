@@ -9,6 +9,7 @@ import { environmentRoutes } from "./routes/environments.js";
 import { endpointRoutes } from "./routes/endpoints.js";
 import { executeRoutes } from "./routes/execute.js";
 import { flowRoutes } from "./routes/flows.js";
+import { backupRoutes } from "./routes/backup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5174);
@@ -26,6 +27,7 @@ async function main() {
   await app.register(endpointRoutes);
   await app.register(executeRoutes);
   await app.register(flowRoutes);
+  await app.register(backupRoutes);
 
   const webRoot = path.resolve(__dirname, "../../web/dist");
   if (fs.existsSync(webRoot)) {

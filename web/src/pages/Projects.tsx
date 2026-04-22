@@ -118,12 +118,21 @@ export default function ProjectsPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96 }}
-                className={`card p-5 ${activeProjectId === p.id ? "ring-1 ring-brand/50" : ""}`}
+                className={`card p-5 transition-shadow ${
+                  activeProjectId === p.id
+                    ? "ring-2 ring-brand/80 shadow-glow"
+                    : "hover:ring-1 hover:ring-white/10"
+                }`}
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="font-medium text-white">{p.name}</div>
+                      {activeProjectId === p.id && (
+                        <span className="chip bg-brand/20 text-brand-glow text-[10px] px-1.5 py-0.5">
+                          ✓ 当前
+                        </span>
+                      )}
                       <span className="chip bg-white/5 text-slate-400">
                         {p._count?.endpoints ?? 0} 接口
                       </span>
@@ -133,12 +142,14 @@ export default function ProjectsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
-                      className="btn-ghost px-2 py-1 text-xs"
-                      onClick={() => setActiveProject(p.id)}
-                    >
-                      {activeProjectId === p.id ? "当前" : "选中"}
-                    </button>
+                    {activeProjectId !== p.id && (
+                      <button
+                        className="btn-ghost px-2 py-1 text-xs"
+                        onClick={() => setActiveProject(p.id)}
+                      >
+                        切换到此
+                      </button>
+                    )}
                     <button className="btn-ghost p-1.5" onClick={() => openEdit(p)}>
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
