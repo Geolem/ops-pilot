@@ -1,10 +1,11 @@
 const BASE = "";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const hasBody = !!init?.body;
   const res = await fetch(`${BASE}${url}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {}),
     },
   });
