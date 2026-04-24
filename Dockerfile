@@ -2,8 +2,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+
 # Same openssl version as runtime so prisma generate picks the right engine binary
-RUN apk add --no-cache openssl
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+ && apk add --no-cache openssl
 
 COPY package.json ./
 COPY server/package.json ./server/
@@ -23,8 +26,11 @@ RUN npm --prefix server run prisma:generate \
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+
 # Prisma's schema engine needs openssl at runtime
-RUN apk add --no-cache openssl
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+ && apk add --no-cache openssl
 
 ENV NODE_ENV=production \
     PORT=5174 \

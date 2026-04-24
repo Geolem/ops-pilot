@@ -1,6 +1,10 @@
 services:
   ops-pilot:
-    build: .
+    build:
+      context: .
+      network: host
+      args:
+        ALPINE_MIRROR: https://mirrors.aliyun.com/alpine
     container_name: ops-pilot
     restart: unless-stopped
     ports:
