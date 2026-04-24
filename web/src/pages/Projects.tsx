@@ -84,15 +84,16 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-8 space-y-6">
+      <div className="flex items-start gap-3 justify-between">
         <div>
           <h1 className="text-xl font-semibold text-white">项目 & 环境</h1>
-          <p className="text-sm text-slate-400 mt-1">一个项目可以关联多个环境（如 dev、测试、预发、生产）。</p>
+          <p className="text-sm text-slate-400 mt-1">一个项目可关联多个环境（dev / 测试 / 预发 / 生产）。</p>
         </div>
-        <button className="btn-primary" onClick={openNew}>
+        <button className="btn-primary shrink-0" onClick={openNew}>
           <Plus className="w-4 h-4" />
-          新建项目
+          <span className="hidden sm:inline">新建项目</span>
+          <span className="sm:hidden">新建</span>
         </button>
       </div>
 
@@ -150,11 +151,12 @@ export default function ProjectsPage() {
                         切换到此
                       </button>
                     )}
-                    <button className="btn-ghost p-1.5" onClick={() => openEdit(p)}>
+                    <button className="btn-ghost p-1.5" aria-label="编辑项目" onClick={() => openEdit(p)}>
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       className="btn-ghost p-1.5 hover:text-rose-300"
+                      aria-label="删除项目"
                       onClick={() => {
                         if (confirm(`删除项目 ${p.name}？其下所有环境、接口都会被清理`)) {
                           deleteProject.mutate(p.id);
@@ -195,7 +197,7 @@ export default function ProjectsPage() {
                               {env.baseUrl}
                             </span>
                           </div>
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
                             <button
                               className="btn-ghost p-1"
                               onClick={() => openEnvEdit(p.id, env)}

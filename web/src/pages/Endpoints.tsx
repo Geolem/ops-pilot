@@ -1,21 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence } from "framer-motion";
-import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X, Terminal } from "lucide-react";
+import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X, Terminal, Copy, ChevronLeft, ChevronDown, Play, Clock, AlertTriangle, Maximize2, RefreshCw, Check, Star } from "lucide-react";
 import { toast } from "sonner";
-import { api, Endpoint } from "@/lib/api";
+import { api, Endpoint, Environment, RunResult } from "@/lib/api";
 import { useAppStore } from "@/store/app";
+import { useShortcut } from "@/hooks/useShortcut";
+import { safeJson, statusClass, stringifyPretty } from "@/lib/utils";
 import MethodBadge from "@/components/MethodBadge";
 import Modal from "@/components/Modal";
 import Empty from "@/components/Empty";
 import JsonEditor from "@/components/JsonEditor";
 import KeyValueEditor, { recordToRows, rowsToRecord, KV } from "@/components/KeyValueEditor";
-import RequestRunner from "@/components/RequestRunner";
+import RequestRunner, { TableView, resolveArray } from "@/components/RequestRunner";
+import Select from "@/components/Select";
 import TagInput from "@/components/TagInput";
 import CurlImport from "@/components/CurlImport";
+import { buildCurl } from "@/lib/curl";
 import { parseCurl } from "@/lib/curlParse";
-import { safeJson } from "@/lib/utils";
-import { Environment } from "@/lib/api";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const UNTAGGED = "__untagged__";
@@ -33,16 +34,40 @@ function parseTags(raw?: string | null): string[] {
 
 export default function EndpointsPage() {
   const qc = useQueryClient();
-  const { activeProjectId, activeEnvironmentId } = useAppStore();
+  const {
+    activeProjectId, activeEnvironmentId,
+    pendingEndpointId, setPendingEndpointId,
+    endpointRunStatus,
+  } = useAppStore();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [keyword, setKeyword] = useState("");
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [methodFilter, setMethodFilter] = useState<string>("");
   const [curlOpen, setCurlOpen] = useState(false);
+  const [tagExpand, setTagExpand] = useState(false);
   const [curlPrefill, setCurlPrefill] = useState<Partial<ReturnType<typeof makeDraft>> | null>(null);
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
 
-  const { data: endpoints = [] } = useQuery({
+  const toggleStar = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Consume pendingEndpointId set by CommandPalette → auto-select the endpoint
+  useEffect(() => {
+    if (pendingEndpointId) {
+      setSelectedId(pendingEndpointId);
+      setPendingEndpointId(null);
+    }
+  }, [pendingEndpointId, setPendingEndpointId]);
+
+  const { data: endpoints = [], isLoading: endpointsLoading } = useQuery({
     queryKey: ["endpoints", activeProjectId],
     queryFn: () =>
       activeProjectId
@@ -62,6 +87,18 @@ export default function EndpointsPage() {
   });
   const baseUrls = envs.map((e) => e.baseUrl);
 
+  // Collect all variable names from active environment for autocomplete
+  const variableSuggestions = useMemo(() => {
+    const activeEnv = envs.find((e) => e.id === activeEnvironmentId);
+    if (!activeEnv) return [];
+    try {
+      const vars = JSON.parse(activeEnv.variables);
+      return Object.keys(vars).sort();
+    } catch {
+      return [];
+    }
+  }, [envs, activeEnvironmentId]);
+
   const allTags = useMemo(() => {
     const counts = new Map<string, number>();
     for (const ep of endpoints) {
@@ -76,7 +113,7 @@ export default function EndpointsPage() {
 
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
-    return endpoints.filter((e) => {
+    const arr = endpoints.filter((e) => {
       if (methodFilter && e.method.toUpperCase() !== methodFilter) return false;
       if (activeTags.size > 0) {
         const tags = parseTags(e.tags);
@@ -92,7 +129,14 @@ export default function EndpointsPage() {
         parseTags(e.tags).some((t) => t.toLowerCase().includes(k))
       );
     });
-  }, [endpoints, keyword, activeTags, methodFilter]);
+    return arr.sort((a, b) => {
+      const aS = starredIds.has(a.id);
+      const bS = starredIds.has(b.id);
+      if (aS && !bS) return -1;
+      if (!aS && bS) return 1;
+      return 0;
+    });
+  }, [endpoints, keyword, activeTags, methodFilter, starredIds]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Endpoint[]>();
@@ -109,13 +153,24 @@ export default function EndpointsPage() {
     );
   }, [filtered]);
 
-  const selected = endpoints.find((e) => e.id === selectedId) ?? filtered[0];
+  const selected = selectedId ? (endpoints.find((e) => e.id === selectedId) ?? null) : null;
 
   const toggleTag = (t: string) => {
     const next = new Set(activeTags);
     if (next.has(t)) next.delete(t);
     else next.add(t);
     setActiveTags(next);
+  };
+
+  // ⌘F → focus search box
+  useShortcut("f", () => searchRef.current?.focus(), { cmdOrCtrl: true });
+
+  const handleCopy = () => {
+    if (!selected) return;
+    const { id: _id, ...rest } = makeDraft(selected, activeProjectId!);
+    setCurlPrefill({ ...rest, name: `副本 - ${selected.name}` });
+    setSelectedId(null);
+    setEditOpen(true);
   };
 
   if (!activeProjectId) {
@@ -127,13 +182,14 @@ export default function EndpointsPage() {
   }
 
   return (
-    <div className="h-full grid grid-cols-[320px_1fr]">
-      <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col min-h-0">
+    <div className="h-full grid md:grid-cols-[300px_1fr]">
+      <div className={`border-r border-black/[0.06] dark:border-white/5 bg-white/30 dark:bg-bg-panel/30 flex flex-col min-h-0 ${selected ? "hidden md:flex" : "flex"}`}>
         <div className="p-3 border-b border-white/5 space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
+                ref={searchRef}
                 className="input pl-8"
                 placeholder="搜索名称/路径/标签"
                 value={keyword}
@@ -155,18 +211,13 @@ export default function EndpointsPage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <select
-              className="input py-1 text-xs w-auto"
+            <Select
               value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-            >
-              <option value="">全部方法</option>
-              {METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+              onChange={setMethodFilter}
+              options={METHODS.map((m) => ({ value: m, label: m }))}
+              placeholder="全部方法"
+              className="text-xs w-[110px]"
+            />
             {(activeTags.size > 0 || keyword || methodFilter) && (
               <button
                 className="btn-ghost text-[11px] px-2 py-1"
@@ -181,63 +232,121 @@ export default function EndpointsPage() {
             )}
           </div>
           {allTags.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap pt-1">
-              {allTags.map(([t, count]) => {
-                const active = activeTags.has(t);
-                return (
-                  <button
-                    key={t}
-                    onClick={() => toggleTag(t)}
-                    className={`chip text-[11px] ${
-                      active
-                        ? "bg-brand/25 text-white ring-1 ring-brand/40"
-                        : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
-                    }`}
-                  >
-                    {t === UNTAGGED ? "未分组" : t}
-                    <span className="text-[10px] opacity-70">·{count}</span>
-                  </button>
-                );
-              })}
+            <div className="pt-1">
+              <div
+                className={`flex items-center gap-1.5 flex-wrap overflow-y-auto ${
+                  tagExpand ? "max-h-none" : "max-h-[72px]"
+                }`}
+              >
+                {allTags.map(([t, count]) => {
+                  const active = activeTags.has(t);
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => toggleTag(t)}
+                      className={`chip text-[11px] ${
+                        active
+                          ? "bg-brand/25 text-white ring-1 ring-brand/40"
+                          : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {t === UNTAGGED ? "未分组" : t}
+                      <span className="text-[10px] opacity-70">·{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {allTags.length > 10 && (
+                <button
+                  className="text-[11px] text-brand-glow hover:underline mt-1"
+                  onClick={() => setTagExpand(!tagExpand)}
+                >
+                  {tagExpand ? "收起标签" : `展开全部标签（共 ${allTags.length} 个）`}
+                </button>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex-1 overflow-auto p-2">
-          {filtered.length === 0 ? (
-            <Empty icon={<Activity className="w-5 h-5" />} title="暂无匹配接口" />
+          {endpointsLoading ? (
+            <div className="flex items-center justify-center py-10 text-slate-500 text-sm gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin" /> 加载中…
+            </div>
+          ) : endpoints.length === 0 ? (
+            <Empty
+              icon={<Activity className="w-5 h-5" />}
+              title="还没有接口"
+              hint="点击右上角「新建」创建第一个接口，或使用 curl 导入。"
+              action={
+                <button
+                  className="btn-primary text-sm"
+                  onClick={() => { setCurlPrefill(null); setSelectedId(null); setEditOpen(true); }}
+                >
+                  <Plus className="w-4 h-4" /> 新建接口
+                </button>
+              }
+            />
+          ) : filtered.length === 0 ? (
+            <Empty icon={<Activity className="w-5 h-5" />} title="暂无匹配接口" hint="尝试调整搜索关键词或筛选条件" />
           ) : (
             <>{grouped.map(([tag, items]) => (
               <div key={tag}>
-                <div className="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
-                  <TagIcon className="w-3 h-3" />
+                <div className="px-2 pt-3 pb-1 section-label flex items-center gap-1.5">
+                  <TagIcon className="w-3 h-3 shrink-0" />
                   {tag === UNTAGGED ? "未分组" : tag}
-                  <span className="opacity-70">({items.length})</span>
+                  <span className="opacity-60 font-normal normal-case tracking-normal text-[11px]">({items.length})</span>
                 </div>
-                {items.map((ep) => (
-                  <button
-                    key={ep.id}
-                    onClick={() => setSelectedId(ep.id)}
-                    className={`w-full text-left px-3 py-2 rounded-md my-0.5 transition-colors ${
-                      selected?.id === ep.id
-                        ? "bg-brand/15 ring-1 ring-brand/30"
-                        : "hover:bg-bg-hover/50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <MethodBadge method={ep.method} />
-                      <span className="text-sm text-white truncate flex-1">{ep.name}</span>
+                {items.map((ep) => {
+                  const rs = endpointRunStatus[ep.id];
+                  const dotColor = rs
+                    ? rs.status >= 200 && rs.status < 300
+                      ? "bg-emerald-400"
+                      : rs.status === 0
+                      ? "bg-rose-400"
+                      : "bg-amber-400"
+                    : null;
+                  const isStarred = starredIds.has(ep.id);
+                  return (
+                    <div
+                      key={ep.id}
+                      onClick={() => setSelectedId(ep.id)}
+                      className={`w-full text-left px-2 py-2 rounded-md my-0.5 transition-colors cursor-pointer flex items-center gap-1 ${
+                        selected?.id === ep.id
+                          ? "bg-brand/15 ring-1 ring-brand/30"
+                          : "hover:bg-bg-hover/50"
+                      }`}
+                    >
+                      <button
+                        className="shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors"
+                        onClick={(e) => toggleStar(ep.id, e)}
+                        title={isStarred ? "取消星标" : "加入星标"}
+                      >
+                        <Star className={`w-3.5 h-3.5 ${isStarred ? "text-amber-400 fill-current" : "text-slate-600"}`} />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <MethodBadge method={ep.method} />
+                          <span className="text-sm text-white truncate flex-1">{ep.name}</span>
+                          {dotColor && (
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
+                              title={rs?.status ? `HTTP ${rs.status}` : "执行失败"}
+                            />
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-400 truncate">{ep.path}</div>
+                      </div>
                     </div>
-                    <div className="text-[11px] font-mono text-slate-500 truncate">{ep.path}</div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             ))}</>
           )}
         </div>
       </div>
 
-      <div className="overflow-auto">
+      <div className={`overflow-auto ${!selected ? "hidden md:block" : "block"}`}>
         {selected ? (
           <EndpointDetail
             endpoint={selected}
@@ -245,17 +354,22 @@ export default function EndpointsPage() {
             projectId={activeProjectId}
             onEdit={() => setEditOpen(true)}
             onDeleted={() => setSelectedId(null)}
+            onCopy={handleCopy}
+            onBack={() => setSelectedId(null)}
           />
         ) : (
-          <Empty title="选择左侧接口查看详情" />
+          <div className="hidden md:flex h-full">
+            <Empty title="选择左侧接口查看详情" />
+          </div>
         )}
       </div>
 
       <EndpointEditor
         open={editOpen}
-        endpoint={selected && editOpen && !curlPrefill ? selected : null}
+        endpoint={selectedId && editOpen && !curlPrefill ? selected : null}
         projectId={activeProjectId}
         existingTags={allTags.filter(([t]) => t !== UNTAGGED).map(([t]) => t)}
+        variableSuggestions={variableSuggestions}
         prefill={curlPrefill ?? undefined}
         onClose={() => { setEditOpen(false); setCurlPrefill(null); }}
         onSaved={(id) => {
@@ -325,10 +439,19 @@ function FormBodyTable({ body }: { body: string }) {
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">{label}</div>
-      <div className="rounded-lg bg-bg-elevated/40 px-3 py-2">{children}</div>
+      <button
+        className="w-full flex items-center gap-1.5 section-label mb-2 hover:text-slate-700 dark:hover:text-slate-100 transition-colors group"
+        onClick={() => setCollapsed((v) => !v)}
+      >
+        <ChevronDown className={`w-3 h-3 shrink-0 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+        {label}
+      </button>
+      {!collapsed && (
+        <div className="rounded-lg bg-bg-elevated/50 px-3 py-2.5 border border-white/5">{children}</div>
+      )}
     </div>
   );
 }
@@ -339,12 +462,16 @@ function EndpointDetail({
   projectId,
   onEdit,
   onDeleted,
+  onCopy,
+  onBack,
 }: {
   endpoint: Endpoint;
   environmentId: string | null;
   projectId: string | null;
   onEdit: () => void;
   onDeleted: () => void;
+  onCopy: () => void;
+  onBack: () => void;
 }) {
   const qc = useQueryClient();
   const del = useMutation({
@@ -356,6 +483,11 @@ function EndpointDetail({
     },
     onError: (e: Error) => toast.error("删除失败：" + e.message),
   });
+  const starMut = useMutation({
+    mutationFn: (starred: boolean) => api.patch<Endpoint>(`/api/endpoints/${endpoint.id}`, { starred }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["endpoints"] }),
+    onError: (e: Error) => toast.error("操作失败：" + e.message),
+  });
 
   const tags = parseTags(endpoint.tags);
   const query = safeJson(endpoint.query, {}) as Record<string, string>;
@@ -366,71 +498,345 @@ function EndpointDetail({
   const hasBody = endpoint.body && endpoint.body.trim();
   const hasExtract = Object.keys(extract).length > 0;
 
+  // ── Response panel state ────────────────────────────────────────────────────
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [resultTab, setResultTab] = useState<string>("body");
+  const [copied, setCopied] = useState(false);
+  const [responseFullscreen, setResponseFullscreen] = useState(false);
+  const [headersWrap, setHeadersWrap] = useState(false);
+  const [bodyRawMode, setBodyRawMode] = useState(false);
+  const [responsePanelCollapsed, setResponsePanelCollapsed] = useState(false);
+
+  // ── 2.2 Build curl ──────────────────────────────────────────────────────────
+  const { data: envList = [] } = useQuery({
+    queryKey: ["environments", projectId ?? ""],
+    queryFn: () => api.get<Environment[]>("/api/environments?projectId=" + projectId),
+    enabled: !!projectId,
+  });
+  const currentEnv = envList.find((e) => e.id === environmentId) ?? null;
+
+  const handleCopyCurl = async () => {
+    const curl = buildCurl({
+      method: endpoint.method,
+      url: currentEnv
+        ? currentEnv.baseUrl.replace(/\/$/, "") + "/" + endpoint.path.replace(/^\//, "")
+        : endpoint.path,
+      headers: safeJson(endpoint.headers, {}) as Record<string, string>,
+      body: endpoint.body || null,
+    });
+    try {
+      await navigator.clipboard.writeText(curl);
+      setCopied(true);
+      toast.success("curl 命令已复制");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("复制失败");
+    }
+  };
+
   return (
-    <div className="p-6 space-y-5 overflow-auto h-full">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <MethodBadge method={endpoint.method} />
-            <h2 className="text-lg font-semibold text-white truncate">{endpoint.name}</h2>
-            {tags.map((t) => (
-              <span key={t} className="chip bg-brand/15 text-brand-glow text-[11px]">{t}</span>
-            ))}
+    <div className="h-full flex flex-col min-h-0">
+      {/* Mobile sticky back bar */}
+      <div className="md:hidden sticky top-0 z-10 flex items-center bg-white/80 dark:bg-bg-panel/90 backdrop-blur border-b border-black/[0.06] dark:border-white/5 px-3 py-2 shrink-0">
+        <button className="btn-ghost text-sm pl-0" onClick={onBack} aria-label="返回列表">
+          <ChevronLeft className="w-4 h-4" /> 返回列表
+        </button>
+      </div>
+      {/* ── Top: params area (scrollable) ── */}
+      <div className="overflow-auto space-y-5 p-4 md:p-6" style={{ flex: runResult ? "1 1 0%" : "1 1 0%" }}>
+
+        {/* Header */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-3">
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <MethodBadge method={endpoint.method} />
+                <h2 className="text-lg font-semibold text-white">{endpoint.name}</h2>
+                {tags.map((t) => (
+                  <span key={t} className="chip bg-brand/10 text-brand text-[11px]">{t}</span>
+                ))}
+              </div>
+              {endpoint.description && <p className="text-sm text-slate-400">{endpoint.description}</p>}
+              <code className="text-xs font-mono text-slate-300 bg-bg-elevated/60 px-2 py-1 rounded break-all block">{endpoint.path}</code>
+            </div>
           </div>
-          {endpoint.description && <p className="text-sm text-slate-400">{endpoint.description}</p>}
-          <code className="text-xs font-mono text-slate-300 bg-bg-elevated/60 px-2 py-1 rounded break-all block">{endpoint.path}</code>
+          {/* Action buttons — wrap on mobile */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              className={`btn-ghost text-xs ${endpoint.starred ? "text-amber-400" : ""}`}
+              onClick={() => !starMut.isPending && starMut.mutate(!endpoint.starred)}
+              title={endpoint.starred ? "取消星标" : "加入星标"}
+            >
+              <Star className={`w-3.5 h-3.5 ${endpoint.starred ? "fill-current" : ""}`} />
+            </button>
+            <button className="btn-ghost text-xs" onClick={handleCopyCurl} title={copied ? "已复制" : "复制为 curl 命令"}>
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Terminal className="w-3.5 h-3.5" />} curl
+            </button>
+            <button className="btn-ghost text-xs" onClick={onCopy} title="复制为新接口">
+              <Copy className="w-3.5 h-3.5" /> 复制
+            </button>
+            <button className="btn-ghost text-xs" onClick={onEdit}>
+              <Edit3 className="w-3.5 h-3.5" /> 编辑
+            </button>
+            <button
+              className="btn-danger text-xs"
+              disabled={del.isPending}
+              onClick={() => {
+                if (confirm(`删除接口「${endpoint.name}」？此操作不可恢复。`)) del.mutate(endpoint.id);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> {del.isPending ? "删除中…" : "删除"}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button className="btn-ghost text-xs" onClick={onEdit}>
-            <Edit3 className="w-3.5 h-3.5" /> 编辑
-          </button>
-          <button
-            className="btn-danger text-xs"
-            disabled={del.isPending}
-            onClick={() => {
-              if (confirm(`删除接口「${endpoint.name}」？此操作不可恢复。`)) del.mutate(endpoint.id);
-            }}
-          >
-            <Trash2 className="w-3.5 h-3.5" /> {del.isPending ? "删除中…" : "删除"}
-          </button>
-        </div>
+
+        {/* Parameters overview */}
+        {(hasQuery || hasHeaders || hasBody || hasExtract) && (
+          <div className="space-y-3">
+            {hasQuery && (
+              <Section label="Query 参数">
+                <ParamTable data={query} />
+              </Section>
+            )}
+            {hasHeaders && (
+              <Section label="请求头">
+                <ParamTable data={headers} />
+              </Section>
+            )}
+            {hasBody && (
+              <Section label={`Body（${endpoint.bodyType}）`}>
+                {endpoint.bodyType === "form" ? (
+                  <FormBodyTable body={endpoint.body} />
+                ) : (
+                  <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                    {endpoint.body}
+                  </pre>
+                )}
+              </Section>
+            )}
+            {hasExtract && (
+              <Section label="变量提取">
+                <ParamTable data={extract} />
+              </Section>
+            )}
+          </div>
+        )}
+
+        {/* Runner */}
+        <RequestRunner endpoint={endpoint} environmentId={environmentId} projectId={projectId} onResult={setRunResult} />
       </div>
 
-      {/* Parameters overview */}
-      {(hasQuery || hasHeaders || hasBody || hasExtract) && (
-        <div className="space-y-3">
-          {hasQuery && (
-            <Section label="Query 参数">
-              <ParamTable data={query} />
-            </Section>
-          )}
-          {hasHeaders && (
-            <Section label="请求头">
-              <ParamTable data={headers} />
-            </Section>
-          )}
-          {hasBody && (
-            <Section label={`Body（${endpoint.bodyType}）`}>
-              {endpoint.bodyType === "form" ? (
-                <FormBodyTable body={endpoint.body} />
-              ) : (
-                <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all max-h-48 overflow-auto">
-                  {endpoint.body}
-                </pre>
+      {/* ── Bottom: Response panel (flexible) ── */}
+      {runResult && (
+        <div
+          className="border-t border-black/10 dark:border-white/5 bg-bg-panel flex flex-col min-h-0"
+          style={
+            responsePanelCollapsed
+              ? { flex: "0 0 auto", overflow: "hidden" }
+              : { flex: "1.8 1 0%", minHeight: "50vh", maxHeight: "88vh", resize: "vertical", overflow: "hidden" }
+          }
+        >
+          {/* Status summary row */}
+          <div className="flex items-center justify-between px-4 py-1.5 border-b border-black/10 dark:border-white/5 bg-white/[0.02] shrink-0">
+            <div className="flex items-center gap-3">
+              <span className={`font-mono text-xs font-bold ${statusClass(runResult.status)}`}>{runResult.status}</span>
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> {runResult.durationMs}ms
+              </span>
+              {runResult.error && (
+                <span className="text-xs text-rose-400 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 shrink-0" />{runResult.error}
+                </span>
               )}
-            </Section>
-          )}
-          {hasExtract && (
-            <Section label="变量提取">
-              <ParamTable data={extract} />
-            </Section>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <button
+                className="btn-ghost p-1"
+                onClick={() => setResponsePanelCollapsed((v) => !v)}
+                title={responsePanelCollapsed ? "展开响应面板" : "折叠响应面板"}
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${responsePanelCollapsed ? "-rotate-90" : ""}`} />
+              </button>
+              <button
+                className="btn-ghost p-1"
+                onClick={() => setResponseFullscreen(true)}
+                title="全屏查看响应"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {!responsePanelCollapsed && (
+            <>
+              {/* Tab bar */}
+              <div className="flex items-center gap-0.5 px-4 py-1 border-b border-black/10 dark:border-white/5 bg-white/[0.02] flex-wrap shrink-0">
+                {[
+                  { key: "body", label: "响应体" },
+                  { key: "headers", label: "响应头" },
+                  ...(Object.keys(runResult.extracted ?? {}).length > 0 ? [{ key: "extract" as const, label: "变量提取" }] : []),
+                  { key: "log", label: "请求日志" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setResultTab(tab.key)}
+                    className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                      resultTab === tab.key
+                        ? "bg-brand/15 text-white"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+                {/* 响应体：原始/表格切换（仅当响应为数组时显示） */}
+                {resultTab === "body" && resolveArray(runResult.responseBody) && (
+                  <button
+                    className="ml-auto text-xs px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                    onClick={() => setBodyRawMode((v) => !v)}
+                    title={bodyRawMode ? "切换为表格视图" : "切换为原始 JSON"}
+                  >
+                    {bodyRawMode ? "表格" : "原始"}
+                  </button>
+                )}
+                {resultTab === "headers" && (
+                  <button
+                    className="ml-auto text-xs px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                    onClick={() => setHeadersWrap((v) => !v)}
+                    title={headersWrap ? "取消自动换行" : "开启自动换行"}
+                  >
+                    {headersWrap ? "不换行" : "换行"}
+                  </button>
+                )}
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-auto min-h-0">
+                {resultTab === "body" && (() => {
+                  const bodyRaw = runResult.responseBody;
+                  const rows = resolveArray(bodyRaw);
+                  if (!bodyRawMode && rows && rows.length > 0) {
+                    return (
+                      <div className="p-3">
+                        <TableView
+                          rows={rows}
+                          projectId={projectId}
+                          environmentId={environmentId}
+                          onRefresh={() => {}}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <pre className="text-xs font-mono whitespace-pre-wrap break-all text-slate-200 p-3">
+                      {typeof bodyRaw === "string"
+                        ? bodyRaw
+                        : JSON.stringify(bodyRaw, null, 2)}
+                    </pre>
+                  );
+                })()}
+                {resultTab === "headers" && (
+                  <pre className={`text-xs font-mono text-slate-200 p-3 ${headersWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre overflow-x-auto"}`}>
+                    {JSON.stringify(runResult.responseHeaders, null, 2)}
+                  </pre>
+                )}
+                {resultTab === "extract" && (
+                  <pre className="text-xs font-mono whitespace-pre-wrap break-all text-slate-200 p-3">
+                    {JSON.stringify(runResult.extracted, null, 2)}
+                  </pre>
+                )}
+                {resultTab === "log" && (
+                  <div className="font-mono text-xs text-slate-300 space-y-0.5 p-3">
+                    {runResult.scriptLog?.length ? (
+                      runResult.scriptLog.map((line, i) => <div key={i}>{line}</div>)
+                    ) : (
+                      <span className="text-slate-500">无脚本输出</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
 
-      {/* Runner */}
-      <RequestRunner endpoint={endpoint} environmentId={environmentId} projectId={projectId} />
+      {/* ── Fullscreen response modal ── */}
+      {runResult && (
+        <Modal
+          open={responseFullscreen}
+          onClose={() => setResponseFullscreen(false)}
+          title={`响应 · HTTP ${runResult.status} · ${runResult.durationMs}ms`}
+          width="max-w-5xl"
+        >
+          <div className="space-y-3">
+            <div className="flex items-center gap-0.5 flex-wrap">
+              {[
+                { key: "body", label: "响应体" },
+                { key: "headers", label: "响应头" },
+                ...(Object.keys(runResult.extracted ?? {}).length > 0 ? [{ key: "extract" as const, label: "变量提取" }] : []),
+                { key: "log", label: "请求日志" },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setResultTab(tab.key)}
+                  className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
+                    resultTab === tab.key ? "bg-brand/15 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              {resultTab === "body" && resolveArray(runResult.responseBody) && (
+                <button
+                  className="ml-auto text-xs px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                  onClick={() => setBodyRawMode((v) => !v)}
+                >
+                  {bodyRawMode ? "表格" : "原始"}
+                </button>
+              )}
+              {resultTab === "headers" && (
+                <button
+                  className="ml-auto text-xs px-2 py-1 rounded text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                  onClick={() => setHeadersWrap((v) => !v)}
+                >
+                  {headersWrap ? "不换行" : "换行"}
+                </button>
+              )}
+            </div>
+            {resultTab === "body" && (() => {
+              const bodyRaw = runResult.responseBody;
+              const rows = resolveArray(bodyRaw);
+              if (!bodyRawMode && rows && rows.length > 0) {
+                return <TableView rows={rows} projectId={projectId} environmentId={environmentId} onRefresh={() => {}} />;
+              }
+              return (
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all text-slate-200 bg-bg-elevated/40 rounded-lg p-4" style={{ minHeight: "55vh" }}>
+                  {typeof bodyRaw === "string" ? bodyRaw : JSON.stringify(bodyRaw, null, 2)}
+                </pre>
+              );
+            })()}
+            {resultTab === "headers" && (
+              <pre className={`text-xs font-mono text-slate-200 bg-bg-elevated/40 rounded-lg p-4 ${headersWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre overflow-x-auto"}`} style={{ minHeight: "55vh" }}>
+                {JSON.stringify(runResult.responseHeaders, null, 2)}
+              </pre>
+            )}
+            {resultTab === "extract" && (
+              <pre className="text-xs font-mono whitespace-pre-wrap break-all text-slate-200 bg-bg-elevated/40 rounded-lg p-4" style={{ minHeight: "55vh" }}>
+                {JSON.stringify(runResult.extracted, null, 2)}
+              </pre>
+            )}
+            {resultTab === "log" && (
+              <div className="font-mono text-xs text-slate-300 space-y-0.5 bg-bg-elevated/40 rounded-lg p-4" style={{ minHeight: "55vh" }}>
+                {runResult.scriptLog?.length ? (
+                  runResult.scriptLog.map((line, i) => <div key={i}>{line}</div>)
+                ) : (
+                  <span className="text-slate-500">无脚本输出</span>
+                )}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -440,6 +846,7 @@ function EndpointEditor({
   endpoint,
   projectId,
   existingTags,
+  variableSuggestions,
   prefill,
   onClose,
   onSaved,
@@ -448,12 +855,15 @@ function EndpointEditor({
   endpoint: Endpoint | null;
   projectId: string;
   existingTags: string[];
+  variableSuggestions?: string[];
   prefill?: Partial<ReturnType<typeof makeDraft>>;
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
   const isNew = !endpoint;
   const [form, setForm] = useState(() => ({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) }));
+  const [initialForm, setInitialForm] = useState(() => ({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) }));
+  const [confirmClose, setConfirmClose] = useState(false);
   const [tab, setTab] = useState<"params" | "headers" | "body" | "extract" | "pre" | "post">("params");
   const [curlText, setCurlText] = useState("");
   const [curlOpen, setCurlOpen] = useState(false);
@@ -461,11 +871,26 @@ function EndpointEditor({
 
   useEffect(() => {
     if (open) {
-      setForm({ ...makeDraft(endpoint, projectId), ...(prefill ?? {}) });
+      const draft = { ...makeDraft(endpoint, projectId), ...(prefill ?? {}) };
+      setForm(draft);
+      setInitialForm(draft);
+      setConfirmClose(false);
       setCurlText(""); setCurlOpen(false); setCurlError(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /** True when user has made any change from the initial state. */
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialForm);
+
+  /** Safe close: show inline confirmation when there are unsaved edits. */
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      setConfirmClose(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
 
   const applyCurl = (text: string) => {
     const trimmed = text.trim();
@@ -474,6 +899,7 @@ function EndpointEditor({
       const parsed = parseCurl(trimmed);
       // strip env baseUrl prefix if url is absolute
       const envBaseUrl = form.projectId ? undefined : undefined; // best-effort, no env context here
+      const resolvedType = parsed.bodyType === "none" ? "json" : parsed.bodyType;
       setForm((prev) => ({
         ...prev,
         method: parsed.method,
@@ -481,7 +907,8 @@ function EndpointEditor({
         _headers: recordToRows(parsed.headers),
         _query: recordToRows(parsed.query),
         body: parsed.body,
-        bodyType: parsed.bodyType === "none" ? "json" : parsed.bodyType,
+        bodyType: resolvedType,
+        _formBody: resolvedType === "form" ? parseFormBody(parsed.body) : prev._formBody,
       }));
       setCurlOpen(false);
       setCurlError(null);
@@ -501,6 +928,9 @@ function EndpointEditor({
     mutationFn: async () => {
       const payload = {
         ...form,
+        body: form.bodyType === "form"
+          ? serializeFormBody(form._formBody as KV[])
+          : form.body,
         headers: JSON.stringify(rowsToRecord(form._headers as KV[])),
         query: JSON.stringify(rowsToRecord(form._query as KV[])),
         extract: JSON.stringify(rowsToRecord(form._extract as KV[])),
@@ -510,6 +940,7 @@ function EndpointEditor({
       delete (payload as any)._query;
       delete (payload as any)._extract;
       delete (payload as any)._tags;
+      delete (payload as any)._formBody;
       // preScript / postScript pass through as-is
       if (form.id) return api.patch<Endpoint>(`/api/endpoints/${form.id}`, payload);
       return api.post<Endpoint>("/api/endpoints", payload);
@@ -522,12 +953,20 @@ function EndpointEditor({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // ① Cmd+S → save when editor is open
+  const handleSave = useCallback(() => {
+    if (form.name && form.path && !save.isPending) save.mutate();
+  }, [form.name, form.path, save]);
+  useShortcut("s", handleSave, { cmdOrCtrl: true, enabled: open });
+  // Escape → safe close (asks for confirmation when dirty)
+  useShortcut("Escape", handleClose, { enabled: open });
+
   if (!open) return null;
 
   const suggested = existingTags.filter((t) => !form._tags.includes(t)).slice(0, 8);
 
   return (
-    <Modal open={open} onClose={onClose} title={isNew ? "新建接口" : "编辑接口"} width="max-w-3xl">
+    <Modal open={open} onClose={handleClose} title={isNew ? "新建接口" : "编辑接口"} width="max-w-3xl" disableBackdropClose>
       <div className="space-y-3">
         {/* Inline curl import */}
         {!curlOpen ? (
@@ -579,23 +1018,28 @@ function EndpointEditor({
         )}
 
         <div className="grid grid-cols-[120px_1fr] gap-2">
-          <select
-            className="input"
+          <Select
             value={form.method}
-            onChange={(e) => setForm({ ...form, method: e.target.value })}
-          >
-            {METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input font-mono"
-            value={form.path}
-            onChange={(e) => setForm({ ...form, path: e.target.value })}
-            placeholder="/api/users/{{userId}}"
+            onChange={(v) => setForm({ ...form, method: v })}
+            options={METHODS.map((m) => ({ value: m, label: m }))}
           />
+          <div className="space-y-1">
+            <input
+              className={`input font-mono ${
+                form.path && !form.path.match(/^(\/|https?:\/\/|\{\{)/)
+                  ? "border-amber-500/50 focus:ring-amber-500/30"
+                  : ""
+              }`}
+              value={form.path}
+              onChange={(e) => setForm({ ...form, path: e.target.value })}
+              placeholder="/api/users/{{userId}}"
+            />
+            {form.path && !form.path.match(/^(\/|https?:\/\/|\{\{)/) && (
+              <div className="text-[11px] text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> 路径建议以 / 开头，或填写完整的 https:// URL
+              </div>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <input
@@ -614,15 +1058,12 @@ function EndpointEditor({
         {!isNew && allProjects.length > 1 && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 shrink-0">所属项目</span>
-            <select
-              className="input py-1.5 text-xs"
+            <Select
               value={form.projectId}
-              onChange={(e) => setForm({ ...form, projectId: e.target.value })}
-            >
-              {allProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm({ ...form, projectId: v })}
+              options={allProjects.map((p) => ({ value: p.id, label: p.name }))}
+              className="text-xs flex-1"
+            />
           </div>
         )}
 
@@ -649,12 +1090,14 @@ function EndpointEditor({
           )}
         </div>
 
-        <div className="border-b border-white/5 flex gap-1 flex-wrap">
+        <div className="flex gap-0.5 flex-wrap border-b border-white/5 pb-1">
           {(["params", "headers", "body", "extract", "pre", "post"] as const).map((t) => (
             <button
               key={t}
-              className={`px-3 py-2 text-xs -mb-px border-b-2 ${
-                tab === t ? "border-brand text-white" : "border-transparent text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all ${
+                tab === t
+                  ? "bg-brand/20 text-brand dark:text-brand-glow ring-1 ring-brand/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
               }`}
               onClick={() => setTab(t)}
             >
@@ -669,6 +1112,7 @@ function EndpointEditor({
             onChange={(r) => setForm({ ...form, _query: r })}
             keyPlaceholder="query key"
             valuePlaceholder="值（支持 {{var}}）"
+            variableSuggestions={variableSuggestions}
           />
         )}
         {tab === "headers" && (
@@ -677,29 +1121,49 @@ function EndpointEditor({
             onChange={(r) => setForm({ ...form, _headers: r })}
             keyPlaceholder="Header 名"
             valuePlaceholder="值（支持 {{var}}）"
+            variableSuggestions={variableSuggestions}
           />
         )}
         {tab === "body" && (
           <div className="space-y-2">
             <div className="flex gap-2 items-center text-xs text-slate-400">
               <span>类型</span>
-              <select
-                className="input py-1 w-32"
+              <Select
                 value={form.bodyType}
-                onChange={(e) => setForm({ ...form, bodyType: e.target.value })}
-              >
-                <option value="json">json</option>
-                <option value="form">form-urlencoded</option>
-                <option value="text">text</option>
-                <option value="none">none</option>
-              </select>
+                onChange={(next) => {
+                  if (next === "form") {
+                    setForm({ ...form, bodyType: next, _formBody: parseFormBody(form.body) });
+                  } else if (form.bodyType === "form") {
+                    setForm({ ...form, bodyType: next, body: serializeFormBody(form._formBody as KV[]) });
+                  } else {
+                    setForm({ ...form, bodyType: next });
+                  }
+                }}
+                options={[
+                  { value: "json", label: "json" },
+                  { value: "form", label: "form-urlencoded" },
+                  { value: "text", label: "text" },
+                  { value: "none", label: "none" },
+                ]}
+                className="text-xs w-40"
+              />
             </div>
-            <JsonEditor
-              value={form.body}
-              onChange={(v) => setForm({ ...form, body: v })}
-              height={220}
-              language={form.bodyType === "json" ? "json" : "plaintext"}
-            />
+            {form.bodyType === "form" ? (
+              <KeyValueEditor
+                rows={form._formBody as KV[]}
+                onChange={(r) => setForm({ ...form, _formBody: r })}
+                keyPlaceholder="字段名"
+                valuePlaceholder="值（支持 {{var}}）"
+                variableSuggestions={variableSuggestions}
+              />
+            ) : (
+              <JsonEditor
+                value={form.body}
+                onChange={(v) => setForm({ ...form, body: v })}
+                height={220}
+                language={form.bodyType === "json" ? "json" : "plaintext"}
+              />
+            )}
           </div>
         )}
         {tab === "extract" && (
@@ -751,7 +1215,7 @@ function EndpointEditor({
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button className="btn-ghost" onClick={onClose}>取消</button>
+          <button className="btn-ghost" onClick={handleClose}>取消</button>
           <button
             className="btn-primary"
             disabled={!form.name || !form.path || save.isPending}
@@ -762,8 +1226,44 @@ function EndpointEditor({
           </button>
         </div>
       </div>
+
+      {/* ── Unsaved changes confirmation overlay ── */}
+      {confirmClose && (
+        <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center rounded-xl">
+          <div className="bg-bg-panel rounded-xl p-6 max-w-sm mx-4 shadow-2xl border border-white/10">
+            <h3 className="text-sm font-medium mb-2">有未保存的修改</h3>
+            <p className="text-xs text-slate-400 mb-4">确定放弃所有更改吗？</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="btn-ghost text-xs px-3 py-1.5"
+                onClick={() => setConfirmClose(false)}
+              >
+                继续编辑
+              </button>
+              <button
+                className="text-xs px-3 py-1.5 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition-colors"
+                onClick={() => { setConfirmClose(false); onClose(); }}
+              >
+                放弃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
+}
+
+function parseFormBody(body: string): KV[] {
+  if (!body.trim()) return [];
+  return body.split("&").map((p) => {
+    const eq = p.indexOf("=");
+    return eq === -1 ? { key: p, value: "" } : { key: p.slice(0, eq), value: p.slice(eq + 1) };
+  }).filter((r) => r.key.trim());
+}
+
+function serializeFormBody(rows: KV[]): string {
+  return rows.filter((r) => r.key.trim()).map((r) => `${r.key}=${r.value}`).join("&");
 }
 
 function makeDraft(ep: Endpoint | null, projectId: string) {
@@ -778,10 +1278,12 @@ function makeDraft(ep: Endpoint | null, projectId: string) {
     bodyType: ep?.bodyType ?? "json",
     preScript: ep?.preScript ?? "",
     postScript: ep?.postScript ?? "",
+    starred: ep?.starred ?? false,
     _tags: parseTags(ep?.tags),
     _headers: recordToRows(safeJson(ep?.headers, {}) as Record<string, string>),
     _query: recordToRows(safeJson(ep?.query, {}) as Record<string, string>),
     _extract: recordToRows(safeJson(ep?.extract, {}) as Record<string, string>),
+    _formBody: parseFormBody(ep?.bodyType === "form" ? (ep?.body ?? "") : ""),
   };
 }
 

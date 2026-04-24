@@ -6,8 +6,8 @@ services:
     ports:
       - "5174:5174"
     volumes:
-      - ./data:/app/data
+      - ./server/data:/app/server/data
     environment:
       - PORT=5174
       - HOST=0.0.0.0
-      - DATABASE_URL=file:/app/data/ops-pilot.db
+      - DATABASE_URL=file:/app/server/data/ops-pilot.db

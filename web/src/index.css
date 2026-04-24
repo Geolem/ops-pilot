@@ -1,139 +1,285 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Theme CSS variables ─────────────────────────────────────────────── */
-:root, :root.dark {
-  color-scheme: dark;
-  --c-bg-base:    11  15  26;
-  --c-bg-panel:   17  24  39;
-  --c-bg-elevated:26  34  52;
-  --c-bg-hover:   34  43  64;
-}
-:root.light {
+/* ── Theme variables ─────────────────────────────────────────────────────── */
+:root, .light {
   color-scheme: light;
-  --c-bg-base:    241 245 249;   /* slate-100  */
-  --c-bg-panel:   255 255 255;
-  --c-bg-elevated:248 250 252;   /* slate-50   */
-  --c-bg-hover:   226 232 240;   /* slate-200  */
+  --c-bg-base:     252 248 242;
+  --c-bg-panel:    255 255 255;
+  --c-bg-elevated: 248 242 234;
+  --c-bg-hover:    240 232 220;
+}
+.dark {
+  color-scheme: dark;
+  --c-bg-base:     12  15  26;
+  --c-bg-panel:    18  23  40;
+  --c-bg-elevated: 26  33  54;
+  --c-bg-hover:    36  46  72;
 }
 
-/* ── Base ─────────────────────────────────────────────────────────────── */
+/* ── Base ────────────────────────────────────────────────────────────────── */
 html, body, #root { height: 100%; }
+
+/* Smooth theme transition — applied only to structural elements */
+body, #root, aside, header, nav, main,
+.card, .input, .btn-primary, .btn-ghost, .btn-danger, .chip {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
 
 body {
   @apply bg-bg-base antialiased;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Poppins", "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+    ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
-.dark body  { @apply text-slate-200; }
-.light body { color: rgb(15 23 42); }
+.light body, body { color: rgb(22 18 14); }
+.dark  body { color: rgb(220 228 240); }
 
-/* noise + glow on dark only */
+/* Warm ambient gradient – light */
+.light body, body {
+  background-image:
+    radial-gradient(at 15%  8%, rgba(249,115,22,0.08), transparent 50%),
+    radial-gradient(at 85% 92%, rgba(251,191,36,0.05), transparent 50%);
+}
+/* Dark ambient gradient */
 .dark body {
   background-image:
-    radial-gradient(at 20% 10%, rgba(99,102,241,0.12), transparent 50%),
-    radial-gradient(at 80% 0%,  rgba(34,211,238,0.08), transparent 45%);
+    radial-gradient(at 20% 10%, rgba(249,115,22,0.12), transparent 50%),
+    radial-gradient(at 80%  0%, rgba(251,191,36,0.07), transparent 45%);
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────── */
-::-webkit-scrollbar              { width:10px; height:10px; }
-::-webkit-scrollbar-thumb        { border-radius:8px; }
-::-webkit-scrollbar-track        { background:transparent; }
-.dark  ::-webkit-scrollbar-thumb { background:#283049; }
-.dark  ::-webkit-scrollbar-thumb:hover { background:#3b4667; }
-.light ::-webkit-scrollbar-thumb { background:#cbd5e1; }
-.light ::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb        { border-radius: 8px; }
+::-webkit-scrollbar-track        { background: transparent; }
+.light ::-webkit-scrollbar-thumb { background: rgba(120,80,20,0.20); }
+.light ::-webkit-scrollbar-thumb:hover { background: rgba(120,80,20,0.35); }
+.dark  ::-webkit-scrollbar-thumb { background: #2e3a5a; }
+.dark  ::-webkit-scrollbar-thumb:hover { background: #3f4f72; }
 
-/* ── Component layer ─────────────────────────────────────────────────── */
+/* ── Component layer ─────────────────────────────────────────────────────── */
 @layer components {
+
+  /* ── Card ──────────────────────────────────────────────────────────────── */
   .card {
-    @apply rounded-xl shadow-soft;
-    background: rgb(var(--c-bg-panel) / 0.7);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgb(var(--c-bg-elevated) / 0.5);
+    @apply rounded-2xl;
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.90);
+    box-shadow: 0 4px 24px rgba(120,80,20,0.07), 0 1px 3px rgba(120,80,20,0.04);
   }
-  .light .card {
-    background: rgb(255 255 255 / 0.9);
-    border-color: rgb(15 23 42 / 0.08);
-    box-shadow: 0 2px 16px rgb(15 23 42 / 0.06);
+  .dark .card {
+    background: rgb(var(--c-bg-panel) / 0.80);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 4px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
   }
 
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
-      transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+      transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed;
   }
+
+  /* Primary – orange gradient */
   .btn-primary {
-    @apply btn bg-gradient-to-r from-brand to-accent text-white
-      hover:shadow-glow hover:scale-[1.02] active:scale-[0.98];
+    @apply btn text-white;
+    background: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
+    box-shadow: 0 2px 10px rgba(249,115,22,0.32);
   }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 22px rgba(249,115,22,0.48);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(249,115,22,0.25);
+  }
+
+  /* Ghost – visible but secondary */
   .btn-ghost {
-    @apply btn text-slate-400 hover:bg-bg-hover hover:text-white;
+    @apply btn;
+    color: rgb(90 82 76);          /* light: readable warm-gray */
   }
-  .light .btn-ghost {
-    @apply text-slate-600 hover:text-slate-900;
-    --tw-bg-opacity: 1;
+  .btn-ghost:hover:not(:disabled) {
+    color: rgb(22 18 14);
+    background: rgba(249,115,22,0.08);
+    transform: translateY(-1px);
   }
-  .light .btn-ghost:hover { background: rgb(var(--c-bg-hover) / 1); }
+  .dark .btn-ghost {
+    color: rgb(172 186 210);       /* dark: clearly visible blue-gray */
+  }
+  .dark .btn-ghost:hover:not(:disabled) {
+    color: rgb(220 228 240);
+    background: rgb(var(--c-bg-hover) / 0.75);
+    transform: translateY(-1px);
+  }
+
+  /* Danger */
   .btn-danger {
-    @apply btn bg-rose-500/15 text-rose-400 hover:bg-rose-500/25;
+    @apply btn;
+    color: rgb(185 28 28);
+    background: rgba(220,38,38,0.09);
+    border: 1px solid rgba(220,38,38,0.15);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(220,38,38,0.16);
+    border-color: rgba(220,38,38,0.28);
+    transform: translateY(-1px);
+  }
+  .dark .btn-danger {
+    color: rgb(252 165 165);
+    background: rgba(239,68,68,0.12);
+    border-color: rgba(239,68,68,0.20);
+  }
+  .dark .btn-danger:hover:not(:disabled) {
+    background: rgba(239,68,68,0.20);
+    border-color: rgba(239,68,68,0.32);
   }
 
+  /* ── Input ──────────────────────────────────────────────────────────────── */
   .input {
-    @apply w-full rounded-lg px-3 py-2 text-sm outline-none
-      focus:ring-2 focus:ring-brand/30 focus:border-brand/60 transition-colors;
-    background: rgb(var(--c-bg-elevated) / 0.7);
-    border: 1px solid rgb(var(--c-bg-elevated) / 0.5);
-    color: inherit;
+    @apply w-full rounded-xl px-3 py-2 text-sm outline-none transition-all duration-200;
+    background: rgba(0,0,0,0.04);
+    border: 1.5px solid rgba(120,80,20,0.14);
+    color: rgb(22 18 14);
   }
-  .dark .input   { @apply text-slate-100 placeholder-slate-500; border-color: rgb(255 255 255 / 0.05); }
-  .light .input  { color: rgb(15 23 42); border-color: rgb(15 23 42 / 0.1); }
-  .light .input::placeholder { color: rgb(100 116 139); }
-  .light .input:focus { border-color: rgb(99 102 241 / 0.6); }
+  .input::placeholder { color: rgba(120,100,80,0.55); }
+  .input:focus {
+    background: rgba(0,0,0,0.05);
+    border-color: rgba(249,115,22,0.50);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+  }
+  .dark .input {
+    background: rgb(var(--c-bg-elevated) / 0.75);
+    border: 1.5px solid rgba(255,255,255,0.12);   /* was 0.06 — now clearly visible */
+    color: rgb(220 228 240);
+  }
+  .dark .input::placeholder { color: rgb(95 112 140); }
+  .dark .input:focus {
+    border-color: rgba(249,115,22,0.55);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.14);
+    background: rgb(var(--c-bg-elevated) / 0.95);
+  }
 
+  /* ── Chip ───────────────────────────────────────────────────────────────── */
   .chip {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium;
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold;
   }
 
-  /* method chips – same in both themes */
-  .method-GET    { @apply bg-emerald-500/15 text-emerald-400; }
-  .method-POST   { @apply bg-sky-500/15     text-sky-400; }
-  .method-PUT    { @apply bg-amber-500/15   text-amber-400; }
-  .method-PATCH  { @apply bg-fuchsia-500/15 text-fuchsia-400; }
-  .method-DELETE { @apply bg-rose-500/15    text-rose-400; }
+  /* ── Method badges ──────────────────────────────────────────────────────── */
+  /* Light – saturated, clear contrast */
+  .method-GET    { background: rgba(5,150,105,0.12);  color: #047857; }
+  .method-POST   { background: rgba(2,132,199,0.12);  color: #0369A1; }
+  .method-PUT    { background: rgba(180,83,9,0.12);   color: #B45309; }
+  .method-PATCH  { background: rgba(124,58,237,0.12); color: #7C3AED; }
+  .method-DELETE { background: rgba(185,28,28,0.12);  color: #B91C1C; }
 
-  /* status text */
-  .status-2xx { @apply text-emerald-400; }
-  .status-3xx { @apply text-sky-400; }
-  .status-4xx { @apply text-amber-400; }
-  .status-5xx { @apply text-rose-400; }
-  .status-0   { @apply text-slate-400; }
+  /* Dark – bright on dark bg, readable */
+  .dark .method-GET    { background: rgba(52,211,153,0.16); color: #34D399; }
+  .dark .method-POST   { background: rgba(56,189,248,0.16); color: #38BDF8; }
+  .dark .method-PUT    { background: rgba(251,191,36,0.16);  color: #FBBF24; }
+  .dark .method-PATCH  { background: rgba(196,181,253,0.16); color: #C4B5FD; }
+  .dark .method-DELETE { background: rgba(252,165,165,0.16); color: #FCA5A5; }
+
+  /* ── Status text (inline) ───────────────────────────────────────────────── */
+  .status-2xx { color: #047857; font-weight: 600; }
+  .status-3xx { color: #0369A1; font-weight: 600; }
+  .status-4xx { color: #B45309; font-weight: 600; }
+  .status-5xx { color: #B91C1C; font-weight: 600; }
+  .status-0   { color: #78716C; font-weight: 600; }
+  .dark .status-2xx { color: #34D399; }
+  .dark .status-3xx { color: #38BDF8; }
+  .dark .status-4xx { color: #FBBF24; }
+  .dark .status-5xx { color: #FCA5A5; }
+  .dark .status-0   { color: rgb(115 130 155); }
+
+  /* ── Status badge (pill with bg) ────────────────────────────────────────── */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold;
+  }
+  .status-badge-2xx { background: rgba(5,150,105,0.12);  color: #047857; }
+  .status-badge-3xx { background: rgba(2,132,199,0.12);  color: #0369A1; }
+  .status-badge-4xx { background: rgba(180,83,9,0.12);   color: #B45309; }
+  .status-badge-5xx { background: rgba(185,28,28,0.12);  color: #B91C1C; }
+  .status-badge-0   { background: rgba(120,113,108,0.12);color: #78716C; }
+  .dark .status-badge-2xx { background: rgba(52,211,153,0.14);  color: #34D399; }
+  .dark .status-badge-3xx { background: rgba(56,189,248,0.14);  color: #38BDF8; }
+  .dark .status-badge-4xx { background: rgba(251,191,36,0.14);  color: #FBBF24; }
+  .dark .status-badge-5xx { background: rgba(252,165,165,0.14); color: #FCA5A5; }
+  .dark .status-badge-0   { background: rgba(100,116,139,0.14); color: rgb(115 130 155); }
+
+  /* ── Section label ──────────────────────────────────────────────────────── */
+  /* Replaces the tiny text-[10px] uppercase pattern everywhere */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wider;
+    color: rgb(120 100 80);      /* light: warm medium-gray */
+    letter-spacing: 0.06em;
+  }
+  .dark .section-label { color: rgb(115 135 165); }  /* dark: blue-tinted, clearly readable */
 }
 
-/* ── Light-mode text & border overrides ──────────────────────────────── */
-/* These remap the slate-* / white utility classes used throughout the app */
-.light .text-white       { color: rgb(15  23  42) !important; }
+/* ── Dark-mode text tier overrides ────────────────────────────────────────── */
+/*
+ * Tailwind's native slate-400/500 are too close together and too gray.
+ * These overrides create a clear 3-tier hierarchy in dark mode.
+ */
+.dark .text-slate-300 { color: rgb(210 220 235) !important; }  /* primary values: bright   */
+.dark .text-slate-400 { color: rgb(162 178 205) !important; }  /* secondary labels: medium  */
+.dark .text-slate-500 { color: rgb(110 130 160) !important; }  /* tertiary/dim: still reads */
+.dark .text-slate-600 { color: rgb( 80 100 130) !important; }  /* de-emphasized             */
+
+/* ── Light-mode text tier overrides ───────────────────────────────────────── */
+.light .text-white       { color: rgb(22 18 14)  !important; }
 .light .text-slate-50,
 .light .text-slate-100,
-.light .text-slate-200   { color: rgb(30  41  59) !important; }
-.light .text-slate-300   { color: rgb(51  65  85) !important; }
-.light .text-slate-400   { color: rgb(71  85 105) !important; }
-.light .text-slate-500   { color: rgb(100 116 139)!important; }
+.light .text-slate-200   { color: rgb(38 34 30)  !important; }
+.light .text-slate-300   { color: rgb(58 52 46)  !important; }  /* was 68 64 60 */
+.light .text-slate-400   { color: rgb(95 85 75)  !important; }  /* was 120 113 108 — much darker */
+.light .text-slate-500   { color: rgb(130 115 100)!important; } /* was 168 162 158 — was near-invisible */
+.light .text-slate-600   { color: rgb(160 145 128)!important; }
 
-/* white/X semi-transparent borders → dark equivalent */
-.light [class*="border-white\/"] { border-color: rgb(15 23 42 / 0.08) !important; }
-.light [class*="divide-white\/"] > * + * { border-color: rgb(15 23 42 / 0.08) !important; }
+/* brand-glow in light */
+.light .text-brand-glow  { color: #C05000 !important; }  /* deeper orange for contrast on warm bg */
 
-/* white/X semi-transparent backgrounds → neutral */
-.light [class*="bg-white\/"] { background-color: rgb(15 23 42 / 0.03) !important; }
+/* ── Light-mode structural overrides ──────────────────────────────────────── */
+.light [class*="border-white\/"]         { border-color: rgba(120,80,20,0.10) !important; }
+.light [class*="divide-white\/"] > * + * { border-color: rgba(120,80,20,0.10) !important; }
+.light [class*="bg-white\/"]             { background-color: rgba(255,255,255,0.55) !important; }
+.light [class*="bg-bg-hover\/"]          { background-color: rgb(240 232 220 / var(--tw-bg-opacity,1)) !important; }
 
-/* Sidebar active indicator gradient in light */
+/* Active nav */
 .light .bg-gradient-to-r.from-brand\/20 {
-  background: linear-gradient(to right, rgb(99 102 241 / 0.12), transparent) !important;
+  background: linear-gradient(to right, rgba(249,115,22,0.10), transparent) !important;
+}
+.light [class*="ring-brand\/"] { --tw-ring-color: rgba(249,115,22,0.40); }
+
+/* ── Dark bg-elevated override: more distinct from panel ──────────────────── */
+.dark [class*="bg-bg-elevated\/"] {
+  /* Ensure elevated bg is meaningfully lighter than the panel */
+  --c-bg-elevated: 30 38 60;
 }
 
-/* React Flow: light background */
-.light .react-flow__background { background-color: rgb(248 250 252) !important; }
-.light .react-flow__background pattern circle { fill: rgb(203 213 225) !important; }
+/* ── React Flow ────────────────────────────────────────────────────────────── */
+.light .react-flow__background          { background-color: rgb(248 242 234) !important; }
+.light .react-flow__background pattern circle { fill: rgba(120,80,20,0.10) !important; }
+.dark  .react-flow__background          { background-color: rgb(26 33 54) !important; }
+.dark  .react-flow__background pattern circle { fill: rgb(36 46 72) !important; }
 
-/* Monaco editor host – let it size itself; theme is set via prop */
+/* ── Monaco editor ─────────────────────────────────────────────────────────── */
+.monaco-editor-container { min-height: 0; }
+
+/* ── Mobile safe area ──────────────────────────────────────────────────────── */
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ── Utility: hide scrollbar while keeping scroll ─────────────────────────── */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Mobile touch: always show action buttons (no hover on touch) ──────────── */
+@media (hover: none) {
+  .group .sm\:opacity-0 { opacity: 1 !important; }
+}

@@ -127,11 +127,12 @@ export async function executeRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/history", async (req) => {
-    const { endpointId, limit } = req.query as { endpointId?: string; limit?: string };
+    const { endpointId, limit, offset } = req.query as { endpointId?: string; limit?: string; offset?: string };
     return prisma.history.findMany({
       where: endpointId ? { endpointId } : undefined,
       orderBy: { createdAt: "desc" },
       take: limit ? Math.min(Number(limit) || 20, 200) : 50,
+      skip: offset ? Math.max(Number(offset) || 0, 0) : 0,
     });
   });
 

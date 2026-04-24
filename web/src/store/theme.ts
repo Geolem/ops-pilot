@@ -23,7 +23,7 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: "dark",
+      theme: "light",
       setTheme: (t) => { set({ theme: t }); applyTheme(t); },
       cycle: () => {
         const cur = get().theme;

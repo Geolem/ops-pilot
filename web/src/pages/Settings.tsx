@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
-import { Github, Server, Info, Download, Upload, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useRef, useState, useEffect, useMemo } from "react";
+import { Github, Server, Info, Download, Upload, CheckCircle2, AlertTriangle, Tag as TagIcon } from "lucide-react";
 import { toast } from "sonner";
+import Select from "@/components/Select";
 
 export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -101,6 +102,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Tag Management */}
+      <TagPanel />
+
       <div className="card p-5 space-y-2">
         <div className="flex items-center gap-2 text-slate-300">
           <Server className="w-4 h-4" />
@@ -133,6 +137,246 @@ export default function SettingsPage() {
           项目使用 git 管理，修改前建议先提交一次快照以便回滚。
         </div>
       </div>
+    </div>
+  );
+}
+
+type ProjectItem = { id: string; name: string };
+type EndpointItem = { id: string; tags: string };
+
+function parseTagsLocal(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) return v.map(String).filter(Boolean);
+  } catch { /* ignore */ }
+  return [];
+}
+
+function TagPanel() {
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [endpoints, setEndpoints] = useState<EndpointItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  const [renameTag, setRenameTag] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const [mergeTag, setMergeTag] = useState<string | null>(null);
+  const [mergeTarget, setMergeTarget] = useState("");
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((data: ProjectItem[]) => {
+        setProjects(data);
+        if (data.length > 0) setSelectedProjectId(data[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    setLoading(true);
+    fetch(`/api/endpoints?projectId=${selectedProjectId}`)
+      .then((r) => r.json())
+      .then((data: EndpointItem[]) => {
+        setEndpoints(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [selectedProjectId]);
+
+  const tagMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const ep of endpoints) {
+      for (const t of parseTagsLocal(ep.tags)) {
+        if (!map.has(t)) map.set(t, []);
+        map.get(t)!.push(ep.id);
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [endpoints]);
+
+  const refreshEndpoints = async () => {
+    if (!selectedProjectId) return;
+    const data: EndpointItem[] = await fetch(`/api/endpoints?projectId=${selectedProjectId}`).then((r) => r.json());
+    setEndpoints(data);
+  };
+
+  const batchPatch = async (
+    oldTag: string,
+    nextTagsFn: (current: string[]) => string[]
+  ) => {
+    setWorking(true);
+    try {
+      const affected = endpoints.filter((ep) => parseTagsLocal(ep.tags).includes(oldTag));
+      const results = await Promise.allSettled(
+        affected.map((ep) => {
+          const next = nextTagsFn(parseTagsLocal(ep.tags));
+          return fetch(`/api/endpoints/${ep.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tags: JSON.stringify(next) }),
+          });
+        })
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed > 0) toast.error(`${failed} 个接口更新失败，其余已完成`);
+      await refreshEndpoints();
+    } catch (err: any) {
+      toast.error("操作失败：" + err.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renameTag || !renameValue.trim()) return;
+    const newName = renameValue.trim();
+    await batchPatch(renameTag, (tags) => tags.map((t) => (t === renameTag ? newName : t)));
+    toast.success(`标签「${renameTag}」已重命名为「${newName}」`);
+    setRenameTag(null);
+  };
+
+  const handleMerge = async () => {
+    if (!mergeTag || !mergeTarget) return;
+    await batchPatch(mergeTag, (tags) => {
+      const next = tags.filter((t) => t !== mergeTag);
+      if (!next.includes(mergeTarget)) next.push(mergeTarget);
+      return next;
+    });
+    toast.success(`标签「${mergeTag}」已合并到「${mergeTarget}」`);
+    setMergeTag(null);
+  };
+
+  const handleDelete = async (tag: string) => {
+    if (!confirm(`删除标签「${tag}」？这会从所有接口中移除该标签，操作不可恢复。`)) return;
+    await batchPatch(tag, (tags) => tags.filter((t) => t !== tag));
+    toast.success(`标签「${tag}」已删除`);
+  };
+
+  return (
+    <div className="card p-5 space-y-4">
+      <div className="flex items-center gap-2 text-slate-300">
+        <TagIcon className="w-4 h-4" />
+        <span className="font-medium">标签管理</span>
+      </div>
+      <p className="text-sm text-slate-400">
+        批量重命名、合并或删除接口标签。
+      </p>
+
+      {projects.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400 shrink-0">项目</span>
+          <Select
+            value={selectedProjectId}
+            onChange={(val) => setSelectedProjectId(val)}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            className="text-xs"
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-sm text-slate-400">加载中…</div>
+      ) : tagMap.length === 0 ? (
+        <div className="text-sm text-slate-500">该项目暂无标签</div>
+      ) : (
+        <div className="space-y-0.5">
+          {tagMap.map(([tag, ids]) => (
+            <div
+              key={tag}
+              className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-white/5 group"
+            >
+              <span className="chip bg-brand/10 text-brand text-[11px] shrink-0">{tag}</span>
+              <span className="flex-1 text-xs text-slate-500">{ids.length} 个接口</span>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  className="btn-ghost text-xs px-2 py-1"
+                  disabled={working}
+                  onClick={() => { setRenameTag(tag); setRenameValue(tag); }}
+                >
+                  重命名
+                </button>
+                <button
+                  className="btn-ghost text-xs px-2 py-1"
+                  disabled={working || tagMap.length < 2}
+                  onClick={() => { setMergeTag(tag); setMergeTarget(""); }}
+                >
+                  合并到
+                </button>
+                <button
+                  className="text-xs px-2 py-1 rounded text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
+                  disabled={working}
+                  onClick={() => handleDelete(tag)}
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Rename dialog */}
+      {renameTag && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-white/10 shadow-2xl space-y-4">
+            <h3 className="text-sm font-medium text-white">重命名标签「{renameTag}」</h3>
+            <input
+              className="input w-full"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="新标签名"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+            />
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost text-xs" onClick={() => setRenameTag(null)}>取消</button>
+              <button
+                className="btn-primary text-xs"
+                disabled={!renameValue.trim() || working}
+                onClick={handleRename}
+              >
+                {working ? "处理中…" : "确认重命名"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge dialog */}
+      {mergeTag && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-white/10 shadow-2xl space-y-4">
+            <h3 className="text-sm font-medium text-white">
+              合并标签「{mergeTag}」到另一个标签
+            </h3>
+            <p className="text-xs text-slate-400">
+              所有带此标签的接口将改为目标标签（原标签被移除）。
+            </p>
+            <Select
+              value={mergeTarget}
+              onChange={(val) => setMergeTarget(val)}
+              options={tagMap.filter(([t]) => t !== mergeTag).map(([t]) => ({ value: t, label: t }))}
+              placeholder="选择目标标签…"
+              className="w-full text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost text-xs" onClick={() => setMergeTag(null)}>取消</button>
+              <button
+                className="btn-primary text-xs"
+                disabled={!mergeTarget || working}
+                onClick={handleMerge}
+              >
+                {working ? "处理中…" : "确认合并"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

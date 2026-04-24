@@ -12,16 +12,18 @@ export default {
           hover:   "rgb(var(--c-bg-hover)   / <alpha-value>)",
         },
         brand: {
-          DEFAULT: "#6366f1",
-          glow:    "#818cf8",
+          DEFAULT: "#F97316",
+          glow:    "#FB923C",
         },
         accent: {
-          DEFAULT: "#22d3ee",
+          DEFAULT: "#FBBF24",
         },
       },
       boxShadow: {
-        glow: "0 0 20px rgba(99, 102, 241, 0.35)",
-        soft: "0 4px 24px rgba(15, 23, 42, 0.4)",
+        glow:  "0 0 20px rgba(249,115,22,0.4)",
+        soft:  "0 4px 24px rgba(120,80,20,0.08)",
+        float: "0 8px 32px rgba(120,80,20,0.16)",
+        card:  "0 2px 12px rgba(120,80,20,0.06)",
       },
       animation: {
         "fade-in":  "fadeIn  0.3s ease-out",
@@ -32,6 +34,7 @@ export default {
         slideUp: { "0%": { opacity: 0, transform: "translateY(6px)" }, "100%": { opacity: 1, transform: "translateY(0)" } },
       },
       fontFamily: {
+        sans: ['"Poppins"', '"PingFang SC"', '"Microsoft YaHei"', '"Noto Sans SC"', "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "monospace"],
       },
     },

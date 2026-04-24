@@ -8,19 +8,25 @@ export default function Modal({
   title,
   children,
   width = "max-w-lg",
+  disableBackdropClose = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   width?: string;
+  /** When true, clicking the backdrop does NOT close the modal.
+   *  Use for forms where accidental dismissal would lose data. */
+  disableBackdropClose?: boolean;
 }) {
+  // When disableBackdropClose is true, the consumer handles Escape themselves
+  // (EndpointEditor uses useShortcut("Escape", handleClose) with its own confirm logic)
   useEffect(() => {
-    if (!open) return;
+    if (!open || disableBackdropClose) return;
     const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, disableBackdropClose]);
 
   return (
     <AnimatePresence>
@@ -30,23 +36,23 @@ export default function Modal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={onClose}
+          onClick={disableBackdropClose ? undefined : onClose}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: "spring", stiffness: 280, damping: 24 }}
-            className={`card w-full ${width}`}
+            className={`card w-full ${width} max-h-[90vh] flex flex-col`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
               <div className="font-medium text-white">{title}</div>
               <button className="btn-ghost p-1.5" onClick={onClose} aria-label="close">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5">{children}</div>
+            <div className="p-5 overflow-y-auto flex-1">{children}</div>
           </motion.div>
         </motion.div>
       )}

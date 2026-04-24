@@ -34,7 +34,7 @@ export default function FlowsPage() {
   const [nameOpen, setNameOpen] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const { data: flows = [] } = useQuery({
+  const { data: flows = [], isLoading: flowsLoading } = useQuery({
     queryKey: ["flows", activeProjectId],
     queryFn: () =>
       activeProjectId
@@ -79,7 +79,13 @@ export default function FlowsPage() {
   }
 
   return (
-    <div className="h-full grid grid-cols-[260px_1fr]">
+    <div className="h-full flex flex-col">
+      {/* Mobile notice — canvas isn't usable on small screens */}
+      <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 text-sm text-amber-300">
+        <Workflow className="w-4 h-4 shrink-0" />
+        编排画布需要较大屏幕，建议在桌面端使用。手机上可查看编排列表，但无法编辑节点。
+      </div>
+    <div className="flex-1 grid md:grid-cols-[260px_1fr] min-h-0">
       <div className="border-r border-white/5 bg-bg-panel/30 flex flex-col min-h-0">
         <div className="p-3 border-b border-white/5 flex items-center gap-2">
           <div className="text-sm text-slate-300 flex items-center gap-1.5 flex-1">
@@ -91,7 +97,13 @@ export default function FlowsPage() {
           </button>
         </div>
         <div className="flex-1 overflow-auto p-2">
-          {flows.length === 0 && <Empty title="还没有编排" />}
+          {flowsLoading ? (
+            <div className="flex items-center justify-center py-8 text-slate-500 text-sm gap-2">
+              <Workflow className="w-4 h-4 animate-pulse" /> 加载中…
+            </div>
+          ) : flows.length === 0 ? (
+            <Empty title="还没有编排" hint="点击右上角 + 新建编排" />
+          ) : null}
           {flows.map((f) => (
             <button
               key={f.id}
@@ -142,6 +154,7 @@ export default function FlowsPage() {
           </div>
         </div>
       </Modal>
+    </div>
     </div>
   );
 }

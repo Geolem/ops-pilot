@@ -11,7 +11,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok && res.status !== 204) {
     const text = await res.text();
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    let msg = text;
+    try {
+      const data = JSON.parse(text);
+      msg = data.error ?? data.message ?? text;
+    } catch { /* not JSON, keep raw text */ }
+    throw new Error(msg || `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -61,6 +66,7 @@ export interface Endpoint {
   extract: string;
   preScript: string;
   postScript: string;
+  starred: boolean;
   updatedAt: string;
 }
 

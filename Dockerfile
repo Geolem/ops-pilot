@@ -2,6 +2,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Same openssl version as runtime so prisma generate picks the right engine binary
+RUN apk add --no-cache openssl
+
 COPY package.json ./
 COPY server/package.json ./server/
 COPY web/package.json ./web/
@@ -19,10 +22,14 @@ RUN npm --prefix server run prisma:generate \
 # ---------- runtime stage ----------
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+# Prisma's schema engine needs openssl at runtime
+RUN apk add --no-cache openssl
+
 ENV NODE_ENV=production \
     PORT=5174 \
     HOST=0.0.0.0 \
-    DATABASE_URL="file:/app/data/ops-pilot.db"
+    DATABASE_URL="file:/app/server/data/ops-pilot.db"
 
 COPY --from=builder /app/server/package.json ./server/package.json
 COPY --from=builder /app/server/node_modules  ./server/node_modules
@@ -30,8 +37,8 @@ COPY --from=builder /app/server/dist          ./server/dist
 COPY --from=builder /app/server/prisma        ./server/prisma
 COPY --from=builder /app/web/dist             ./web/dist
 
-RUN mkdir -p /app/data
-VOLUME ["/app/data"]
+RUN mkdir -p /app/server/data
+VOLUME ["/app/server/data"]
 EXPOSE 5174
 
 WORKDIR /app/server

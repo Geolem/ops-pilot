@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import MethodBadge from "@/components/MethodBadge";
+import Select from "@/components/Select";
 import { statusClass } from "@/lib/utils";
 import { Endpoint } from "@/lib/api";
 
@@ -50,18 +51,15 @@ function EndpointNode({ data, selected }: NodeProps<EndpointNodeData>) {
         )}
       </div>
       <div className="p-3 space-y-2">
-        <select
-          className="input py-1.5 text-xs w-full nodrag"
-          value={ep?.id ?? ""}
-          onChange={(e) => data.onChange?.({ endpointId: e.target.value })}
-        >
-          <option value="">选择接口…</option>
-          {data.endpoints.map((e) => (
-            <option key={e.id} value={e.id}>
-              [{e.method}] {e.name}
-            </option>
-          ))}
-        </select>
+        <div className="nodrag">
+          <Select
+            value={ep?.id ?? ""}
+            onChange={(val) => data.onChange?.({ endpointId: val })}
+            options={data.endpoints.map((e) => ({ value: e.id, label: `[${e.method}] ${e.name}` }))}
+            placeholder="选择接口…"
+            className="text-xs w-full"
+          />
+        </div>
         {ep && (
           <div className="flex items-center gap-1.5">
             <MethodBadge method={ep.method} />

@@ -16,6 +16,7 @@ const endpointSchema = z.object({
   extract: z.string().optional(),
   preScript: z.string().optional(),
   postScript: z.string().optional(),
+  starred: z.boolean().optional(),
 });
 
 export async function endpointRoutes(app: FastifyInstance) {
