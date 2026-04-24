@@ -3,17 +3,19 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 
 # Same openssl version as runtime so prisma generate picks the right engine binary
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
  && apk add --no-cache openssl
 
-COPY package.json ./
-COPY server/package.json ./server/
-COPY web/package.json ./web/
+COPY package.json package-lock.json ./
+COPY server/package.json server/package-lock.json ./server/
+COPY web/package.json web/package-lock.json ./web/
 
-RUN npm install --prefix server --no-audit --no-fund \
- && npm install --prefix web    --no-audit --no-fund
+RUN npm config set registry "${NPM_REGISTRY}" \
+ && npm ci --prefix server --no-audit --no-fund --prefer-offline \
+ && npm ci --prefix web    --no-audit --no-fund --prefer-offline
 
 COPY server ./server
 COPY web ./web

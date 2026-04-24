@@ -5,6 +5,7 @@ services:
       network: host
       args:
         ALPINE_MIRROR: https://mirrors.aliyun.com/alpine
+        NPM_REGISTRY: https://registry.npmmirror.com
     container_name: ops-pilot
     restart: unless-stopped
     ports:
