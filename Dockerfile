@@ -4,9 +4,8 @@ WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=1536
+ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=512
 
-# Same openssl version as runtime so prisma generate picks the right engine binary
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
  && apk add --no-cache openssl
 
@@ -25,20 +24,25 @@ RUN npm --prefix server run prisma:generate
 RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" npm --prefix web run build
 RUN npm --prefix server run build
 
+# Strip devDeps from server — save the generated prisma client first
+RUN cp -r server/node_modules/.prisma /tmp/prisma-generated \
+ && npm ci --prefix server --omit=dev --no-audit --no-fund --prefer-offline \
+ && cp -r /tmp/prisma-generated server/node_modules/.prisma
+
 # ---------- runtime stage ----------
 FROM node:20-alpine AS runner
 WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 
-# Prisma's schema engine needs openssl at runtime
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
  && apk add --no-cache openssl
 
 ENV NODE_ENV=production \
     PORT=5174 \
     HOST=0.0.0.0 \
-    DATABASE_URL="file:/app/server/data/ops-pilot.db"
+    DATABASE_URL="file:/app/server/data/ops-pilot.db" \
+    NODE_OPTIONS="--max-old-space-size=256"
 
 COPY --from=builder /app/server/package.json ./server/package.json
 COPY --from=builder /app/server/node_modules  ./server/node_modules
@@ -51,4 +55,4 @@ VOLUME ["/app/server/data"]
 EXPOSE 5174
 
 WORKDIR /app/server
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma db push --accept-data-loss --skip-generate && node dist/index.js"]
