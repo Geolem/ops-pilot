@@ -4,6 +4,7 @@ WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=1024
 
 # Same openssl version as runtime so prisma generate picks the right engine binary
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
@@ -20,9 +21,9 @@ RUN npm config set registry "${NPM_REGISTRY}" \
 COPY server ./server
 COPY web ./web
 
-RUN npm --prefix server run prisma:generate \
- && npm --prefix web    run build \
- && npm --prefix server run build
+RUN npm --prefix server run prisma:generate
+RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" npm --prefix web run build
+RUN npm --prefix server run build
 
 # ---------- runtime stage ----------
 FROM node:20-alpine AS runner
