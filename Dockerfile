@@ -4,7 +4,7 @@ WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=1024
+ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=1536
 
 # Same openssl version as runtime so prisma generate picks the right engine binary
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
