@@ -1,17 +1,21 @@
 import { memo, useState } from "react";
 import {
+  Edge,
   EdgeProps,
   getStraightPath,
   getBezierPath,
   EdgeLabelRenderer,
   BaseEdge,
-} from "reactflow";
+} from "@xyflow/react";
 import { CheckCircle2, GitBranch } from "lucide-react";
 
 export interface ConditionEdgeData {
+  [key: string]: unknown;
   condition?: string;
   onConditionChange?: (edgeId: string, condition: string) => void;
 }
+
+export type ConditionFlowEdge = Edge<ConditionEdgeData, "condition">;
 
 function ConditionEdge({
   id,
@@ -24,7 +28,7 @@ function ConditionEdge({
   data,
   markerEnd,
   style,
-}: EdgeProps<ConditionEdgeData>) {
+}: EdgeProps<ConditionFlowEdge>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data?.condition ?? "");
 

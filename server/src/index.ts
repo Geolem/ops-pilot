@@ -4,6 +4,7 @@ import fastifyStatic from "@fastify/static";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ZodError } from "zod";
 import { projectRoutes } from "./routes/projects.js";
 import { environmentRoutes } from "./routes/environments.js";
 import { endpointRoutes } from "./routes/endpoints.js";
@@ -16,11 +17,38 @@ const PORT = Number(process.env.PORT ?? 5174);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
 async function main() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+  const app = Fastify({
+    bodyLimit: Number(process.env.OPS_PILOT_BODY_LIMIT_BYTES ?? 10_000_000),
+    logger: { level: process.env.LOG_LEVEL ?? "info" },
+  });
 
   await app.register(cors, { origin: true, credentials: true });
 
+  app.addHook("onRequest", async (_req, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
   app.get("/api/health", async () => ({ ok: true, ts: Date.now() }));
+
+  app.setErrorHandler((err, req, reply) => {
+    if (err instanceof ZodError) {
+      reply.code(400).send({
+        error: "Invalid request payload",
+        details: err.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      });
+      return;
+    }
+
+    req.log.error(err);
+    const message = err instanceof Error ? err.message : "Internal Server Error";
+    reply.code(500).send({ error: message });
+  });
 
   await app.register(projectRoutes);
   await app.register(environmentRoutes);

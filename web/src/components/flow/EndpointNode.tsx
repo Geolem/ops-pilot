@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, NodeProps } from "reactflow";
+import { Handle, Position, Node, NodeProps } from "@xyflow/react";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import MethodBadge from "@/components/MethodBadge";
 import Select from "@/components/Select";
@@ -7,6 +7,7 @@ import { statusClass } from "@/lib/utils";
 import { Endpoint } from "@/lib/api";
 
 export interface EndpointNodeData {
+  [key: string]: unknown;
   endpointId?: string;
   endpoint: Endpoint | null;
   alias?: string;
@@ -17,7 +18,9 @@ export interface EndpointNodeData {
   endpoints: Endpoint[];
 }
 
-function EndpointNode({ data, selected }: NodeProps<EndpointNodeData>) {
+export type EndpointFlowNode = Node<EndpointNodeData, "endpoint">;
+
+function EndpointNode({ data, selected }: NodeProps<EndpointFlowNode>) {
   const ep = data.endpoint;
   const state = data.status ?? "idle";
   const ring =

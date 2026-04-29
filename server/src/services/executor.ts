@@ -46,6 +46,48 @@ function buildUrl(url: string, query: Record<string, string>): string {
   return url.includes("?") ? `${url}&${qs}` : `${url}?${qs}`;
 }
 
+const MAX_RESPONSE_BYTES = Number(process.env.OPS_PILOT_MAX_RESPONSE_BYTES ?? 2_000_000);
+const ALLOWED_HOSTS = (process.env.OPS_PILOT_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean);
+
+function assertAllowedUrl(rawUrl: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid request URL: ${rawUrl}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only HTTP and HTTPS URLs are allowed");
+  }
+  if (!ALLOWED_HOSTS.length) return;
+
+  const hostname = parsed.hostname.toLowerCase();
+  const allowed = ALLOWED_HOSTS.some((pattern) => {
+    if (pattern.startsWith(".")) return hostname.endsWith(pattern);
+    return hostname === pattern;
+  });
+  if (!allowed) {
+    throw new Error(`Request host is not allowed: ${parsed.hostname}`);
+  }
+}
+
+async function readResponseText(body: AsyncIterable<Buffer | Uint8Array | string>): Promise<string> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of body) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      throw new Error(`Response body exceeded ${MAX_RESPONSE_BYTES} bytes`);
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function runScript(
   code: string,
   ctx: Record<string, unknown>,
@@ -124,6 +166,7 @@ export async function executeRequest(input: ExecuteInput): Promise<ExecuteResult
   const url = buildUrl(baseUrl, renderedQuery as Record<string, string>);
   const start = Date.now();
   try {
+    assertAllowedUrl(url);
     const res = await undiciRequest(url, {
       method: method as any,
       headers: renderedHeaders,
@@ -132,7 +175,7 @@ export async function executeRequest(input: ExecuteInput): Promise<ExecuteResult
       bodyTimeout: input.timeoutMs ?? 30000,
     });
     const durationMs = Date.now() - start;
-    const text = await res.body.text();
+    const text = await readResponseText(res.body as AsyncIterable<Buffer | Uint8Array | string>);
     const responseHeaders: Record<string, string> = {};
     for (const [k, v] of Object.entries(res.headers)) {
       responseHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v ?? "");

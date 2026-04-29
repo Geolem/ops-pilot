@@ -1,14 +1,28 @@
 const BASE = "";
+const REQUEST_TIMEOUT_MS = 30000;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const hasBody = !!init?.body;
-  const res = await fetch(`${BASE}${url}`, {
-    ...init,
-    headers: {
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${url}`, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: {
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("请求超时，请稍后重试");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!res.ok && res.status !== 204) {
     const text = await res.text();
     let msg = text;

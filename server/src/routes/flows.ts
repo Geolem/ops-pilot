@@ -41,7 +41,7 @@ const flowRunSchema = z.object({
     target: z.string(),
     condition: z.string().optional().nullable(),
   })).optional(),
-  extraVariables: z.record(z.unknown()).optional(),
+  extraVariables: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function flowRoutes(app: FastifyInstance) {

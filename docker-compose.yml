@@ -1,12 +1,6 @@
 services:
   ops-pilot:
-    build:
-      context: .
-      network: host
-      args:
-        ALPINE_MIRROR: https://mirrors.aliyun.com/alpine
-        NPM_REGISTRY: https://registry.npmmirror.com
-        WEB_BUILD_NODE_OPTIONS: --max-old-space-size=512
+    image: registry.cn-shenzhen.aliyuncs.com/huazhiy/ops-pilot:latest
     container_name: ops-pilot
     restart: unless-stopped
     ports:

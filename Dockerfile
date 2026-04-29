@@ -1,5 +1,5 @@
 # ---------- build stage ----------
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
@@ -27,10 +27,11 @@ RUN npm --prefix server run build
 # Strip devDeps from server — save the generated prisma client first
 RUN cp -r server/node_modules/.prisma /tmp/prisma-generated \
  && npm ci --prefix server --omit=dev --no-audit --no-fund --prefer-offline \
+ && rm -rf server/node_modules/.prisma \
  && cp -r /tmp/prisma-generated server/node_modules/.prisma
 
 # ---------- runtime stage ----------
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
@@ -42,6 +43,7 @@ ENV NODE_ENV=production \
     PORT=5174 \
     HOST=0.0.0.0 \
     DATABASE_URL="file:/app/server/data/ops-pilot.db" \
+    CHECKPOINT_DISABLE=1 \
     NODE_OPTIONS="--max-old-space-size=256"
 
 COPY --from=builder /app/server/package.json ./server/package.json
@@ -55,4 +57,4 @@ VOLUME ["/app/server/data"]
 EXPOSE 5174
 
 WORKDIR /app/server
-CMD ["sh", "-c", "./node_modules/.bin/prisma db push --accept-data-loss --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma db push --accept-data-loss --skip-generate >/tmp/prisma-db-push.log 2>&1 || { cat /tmp/prisma-db-push.log >&2; exit 1; }; node dist/index.js"]

@@ -29,12 +29,55 @@ export async function backupRoutes(app: FastifyInstance) {
   });
 
   // Full import — upserts every record by id
+  const projectImportSchema = z.object({
+    id: z.string(),
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    color: z.string().nullable().optional(),
+  });
+
+  const environmentImportSchema = z.object({
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string().min(1),
+    baseUrl: z.string(),
+    headers: z.string().optional().default("{}"),
+    variables: z.string().optional().default("{}"),
+  });
+
+  const endpointImportSchema = z.object({
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    method: z.string().optional().default("GET"),
+    path: z.string(),
+    headers: z.string().optional().default("{}"),
+    query: z.string().optional().default("{}"),
+    body: z.string().optional().default(""),
+    bodyType: z.string().optional().default("json"),
+    tags: z.string().optional().default("[]"),
+    extract: z.string().optional().default("{}"),
+    preScript: z.string().optional().default(""),
+    postScript: z.string().optional().default(""),
+    starred: z.boolean().optional().default(false),
+  });
+
+  const flowImportSchema = z.object({
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    nodes: z.string().optional().default("[]"),
+    edges: z.string().optional().default("[]"),
+  });
+
   const importSchema = z.object({
     version: z.number().optional(),
-    projects: z.array(z.any()).optional().default([]),
-    environments: z.array(z.any()).optional().default([]),
-    endpoints: z.array(z.any()).optional().default([]),
-    flows: z.array(z.any()).optional().default([]),
+    projects: z.array(projectImportSchema).optional().default([]),
+    environments: z.array(environmentImportSchema).optional().default([]),
+    endpoints: z.array(endpointImportSchema).optional().default([]),
+    flows: z.array(flowImportSchema).optional().default([]),
   });
 
   app.post("/api/import", async (req, reply) => {
@@ -42,7 +85,7 @@ export async function backupRoutes(app: FastifyInstance) {
     const stats = { projects: 0, environments: 0, endpoints: 0, flows: 0 };
 
     for (const p of data.projects) {
-      const { id, createdAt, updatedAt, environments, _count, ...rest } = p;
+      const { id, ...rest } = p;
       await prisma.project.upsert({
         where: { id },
         update: rest,
@@ -52,7 +95,7 @@ export async function backupRoutes(app: FastifyInstance) {
     }
 
     for (const e of data.environments) {
-      const { id, createdAt, updatedAt, ...rest } = e;
+      const { id, ...rest } = e;
       await prisma.environment.upsert({
         where: { id },
         update: rest,
@@ -62,7 +105,7 @@ export async function backupRoutes(app: FastifyInstance) {
     }
 
     for (const ep of data.endpoints) {
-      const { id, createdAt, updatedAt, ...rest } = ep;
+      const { id, ...rest } = ep;
       await prisma.endpoint.upsert({
         where: { id },
         update: rest,
@@ -72,7 +115,7 @@ export async function backupRoutes(app: FastifyInstance) {
     }
 
     for (const f of data.flows) {
-      const { id, createdAt, updatedAt, ...rest } = f;
+      const { id, ...rest } = f;
       await prisma.flow.upsert({
         where: { id },
         update: rest,
