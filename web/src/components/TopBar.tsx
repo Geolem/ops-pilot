@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, Project, Environment } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useAppStore } from "@/store/app";
 import { safeJson } from "@/lib/utils";
-import { Globe2, FolderKanban, Code2, X, Search } from "lucide-react";
+import { Globe2, FolderKanban, Code2, X, Search, LogOut } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import Select from "./Select";
 
@@ -76,6 +77,7 @@ function EnvVarPopover({
 
 export default function TopBar() {
   const { activeProjectId, activeEnvironmentId, setActiveProject, setActiveEnvironment } = useAppStore();
+  const { setUser } = useAuth();
   const [envVarOpen, setEnvVarOpen] = useState(false);
 
   const { data: projects = [] } = useQuery({
@@ -158,6 +160,17 @@ export default function TopBar() {
       </button>
 
       <ThemeToggle />
+
+      <button
+        className="btn-ghost p-2"
+        title="退出登录"
+        onClick={async () => {
+          await api.post("/api/auth/logout");
+          setUser(null);
+        }}
+      >
+        <LogOut className="w-4 h-4" />
+      </button>
     </div>
   );
 }

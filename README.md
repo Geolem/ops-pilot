@@ -112,6 +112,25 @@ http://服务器IP:5174
 
 升级镜像时保留 `./server/data` 目录即可保留数据。
 
+### 后台账号与 OTP
+
+首次启动会创建后台管理员账号。生产环境请设置：
+
+```bash
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=请替换为强密码
+ADMIN_OTP_RESET_TOKEN=请替换为长随机字符串
+```
+
+登录后可在设置页绑定 OTP。绑定后登录必须输入密码和认证器 6 位验证码；OTP 不能在前端自助重置，只能由后台调用：
+
+```bash
+curl -X POST http://127.0.0.1:5174/api/admin/auth/otp/reset \
+  -H "Content-Type: application/json" \
+  -H "x-admin-reset-token: $ADMIN_OTP_RESET_TOKEN" \
+  -d '{"username":"admin"}'
+```
+
 ## 构建并推送镜像
 
 `deploy.sh` 会构建 linux/amd64 镜像并推送到：

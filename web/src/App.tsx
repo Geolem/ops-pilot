@@ -9,13 +9,24 @@ import ProjectsPage from "./pages/Projects";
 import EndpointsPage from "./pages/Endpoints";
 import HistoryPage from "./pages/History";
 import SettingsPage from "./pages/Settings";
+import LoginPage from "./pages/Login";
+import { AuthProvider, useAuth } from "./lib/auth";
 
 const FlowsPage = lazy(() => import("./pages/Flows"));
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <AuthedApp />
+    </AuthProvider>
+  );
+}
+
+function AuthedApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("sb-collapsed") === "1"
   );
+  const { user, loading } = useAuth();
 
   const toggleSidebar = () => {
     setSidebarCollapsed((v) => {
@@ -24,6 +35,12 @@ export default function App() {
       return next;
     });
   };
+
+  if (loading) {
+    return <div className="h-full grid place-items-center text-sm text-slate-400">加载中...</div>;
+  }
+
+  if (!user) return <LoginPage />;
 
   return (
     <div className="h-full flex">

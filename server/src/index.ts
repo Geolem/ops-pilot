@@ -4,13 +4,16 @@ import fastifyStatic from "@fastify/static";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import cookie from "@fastify/cookie";
 import { ZodError } from "zod";
+import { authRoutes } from "./routes/auth.js";
 import { projectRoutes } from "./routes/projects.js";
 import { environmentRoutes } from "./routes/environments.js";
 import { endpointRoutes } from "./routes/endpoints.js";
 import { executeRoutes } from "./routes/execute.js";
 import { flowRoutes } from "./routes/flows.js";
 import { backupRoutes } from "./routes/backup.js";
+import { ensureAdminUser, registerAuthGuard } from "./lib/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5174);
@@ -23,6 +26,11 @@ async function main() {
   });
 
   await app.register(cors, { origin: true, credentials: true });
+  await app.register(cookie);
+
+  await ensureAdminUser();
+  await app.register(authRoutes);
+  registerAuthGuard(app);
 
   app.addHook("onRequest", async (_req, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");

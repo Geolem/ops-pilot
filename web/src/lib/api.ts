@@ -9,6 +9,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE}${url}`, {
       ...init,
+      credentials: "same-origin",
       signal: init?.signal ?? controller.signal,
       headers: {
         ...(hasBody ? { "Content-Type": "application/json" } : {}),
