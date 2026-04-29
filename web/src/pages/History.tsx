@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { History as HistoryIcon, Clock, Copy, Repeat2, Terminal, ChevronRight, CheckSquare, GitCompare, ChevronLeft } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, RunResult } from "@/lib/api";
 import MethodBadge from "@/components/MethodBadge";
 import Empty from "@/components/Empty";
@@ -92,11 +93,11 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-end justify-between">
+    <div className="page-shell space-y-4">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-semibold text-white">执行历史</h1>
-          <p className="text-sm text-slate-400 mt-1">每页 {PAGE_SIZE} 条（首页每 5s 自动刷新）。行内可重放或导出 curl。</p>
+          <h1 className="page-title">执行历史</h1>
+          <p className="page-subtitle">每页 {PAGE_SIZE} 条，首页每 5s 自动刷新。行内可重放、导出 curl，也可以选择两条响应做比对。</p>
         </div>
         <div className="flex items-center gap-2">
           {selectedIds.size === 2 ? (
@@ -120,11 +121,28 @@ export default function HistoryPage() {
       </div>
 
       {isLoading ? (
-        <div className="card flex items-center justify-center py-16 text-slate-500 text-sm gap-2">
-          <HistoryIcon className="w-4 h-4 animate-pulse" /> 加载中…
+        <div className="card divide-y divide-white/5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="px-4 py-3 flex items-center gap-3">
+              <div className="skeleton-line w-16" />
+              <div className="skeleton-line flex-1" />
+              <div className="skeleton-line w-20 hidden sm:block" />
+              <div className="skeleton-line w-28 hidden lg:block" />
+            </div>
+          ))}
         </div>
       ) : data.length === 0 && page === 0 ? (
-        <Empty icon={<HistoryIcon className="w-5 h-5" />} title="暂无记录" hint="执行接口后会在这里显示调用记录" />
+        <Empty
+          icon={<HistoryIcon className="w-5 h-5" />}
+          title="暂无记录"
+          hint="执行接口后会在这里显示调用记录、响应耗时和重放入口。"
+          action={
+            <Link to="/endpoints" className="btn-primary">
+              <Terminal className="w-4 h-4" />
+              去调试接口
+            </Link>
+          }
+        />
       ) : (
         <div className="card divide-y divide-white/5">
           {data.map((h, i) => (
@@ -133,7 +151,7 @@ export default function HistoryPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: Math.min(i * 0.008, 0.25) }}
-              className="px-4 py-3 hover:bg-bg-hover/40 group cursor-pointer"
+              className="px-4 py-3 soft-row group cursor-pointer"
               onClick={() => setDetailId(h.id)}
             >
               {/* ── Desktop row ── */}

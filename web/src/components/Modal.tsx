@@ -35,7 +35,7 @@ export default function Modal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={disableBackdropClose ? undefined : onClose}
         >
           <motion.div
@@ -47,7 +47,7 @@ export default function Modal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
-              <div className="font-medium text-white">{title}</div>
+              <div className="panel-title">{title}</div>
               <button className="btn-ghost p-1.5" onClick={onClose} aria-label="close">
                 <X className="w-4 h-4" />
               </button>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit3, Trash2, Activity, Search, Save, Tag as TagIcon, X, Terminal, Copy, ChevronLeft, ChevronDown, Play, Clock, AlertTriangle, Maximize2, RefreshCw, Check, Star } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { api, Endpoint, Environment, RunResult } from "@/lib/api";
 import { useAppStore } from "@/store/app";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -48,16 +49,6 @@ export default function EndpointsPage() {
   const [curlOpen, setCurlOpen] = useState(false);
   const [tagExpand, setTagExpand] = useState(false);
   const [curlPrefill, setCurlPrefill] = useState<Partial<ReturnType<typeof makeDraft>> | null>(null);
-  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
-
-  const toggleStar = useCallback((id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setStarredIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
 
   // Consume pendingEndpointId set by CommandPalette → auto-select the endpoint
   useEffect(() => {
@@ -86,6 +77,18 @@ export default function EndpointsPage() {
     enabled: !!activeProjectId,
   });
   const baseUrls = envs.map((e) => e.baseUrl);
+
+  const listStarMut = useMutation({
+    mutationFn: ({ id, starred }: { id: string; starred: boolean }) =>
+      api.patch<Endpoint>(`/api/endpoints/${id}`, { starred }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["endpoints", activeProjectId] }),
+    onError: (e: Error) => toast.error("星标更新失败：" + e.message),
+  });
+
+  const toggleStar = useCallback((id: string, starred: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    listStarMut.mutate({ id, starred: !starred });
+  }, [listStarMut]);
 
   // Collect all variable names from active environment for autocomplete
   const variableSuggestions = useMemo(() => {
@@ -130,13 +133,13 @@ export default function EndpointsPage() {
       );
     });
     return arr.sort((a, b) => {
-      const aS = starredIds.has(a.id);
-      const bS = starredIds.has(b.id);
+      const aS = !!a.starred;
+      const bS = !!b.starred;
       if (aS && !bS) return -1;
       if (!aS && bS) return 1;
-      return 0;
+      return a.name.localeCompare(b.name);
     });
-  }, [endpoints, keyword, activeTags, methodFilter, starredIds]);
+  }, [endpoints, keyword, activeTags, methodFilter]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Endpoint[]>();
@@ -176,15 +179,24 @@ export default function EndpointsPage() {
   if (!activeProjectId) {
     return (
       <div className="p-8">
-        <Empty title="请先在顶部选择一个项目" hint="接口、环境都是以项目为单位管理的。" />
+        <Empty
+          title="请先选择或创建项目"
+          hint="接口、环境都是以项目为单位管理的。已有项目可在顶部选择，新项目可先到项目页配置。"
+          action={
+            <Link to="/projects" className="btn-primary">
+              <Plus className="w-4 h-4" />
+              去项目页
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="h-full grid md:grid-cols-[300px_1fr]">
+    <div className="h-full grid md:grid-cols-[320px_1fr]">
       <div className={`border-r border-black/[0.06] dark:border-white/5 bg-white/30 dark:bg-bg-panel/30 flex flex-col min-h-0 ${selected ? "hidden md:flex" : "flex"}`}>
-        <div className="p-3 border-b border-white/5 space-y-2">
+        <div className="p-3 border-b border-black/[0.06] dark:border-white/5 space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -197,17 +209,18 @@ export default function EndpointsPage() {
               />
             </div>
             <button
-              className="btn-primary gap-1.5 px-3 text-xs"
+              className="btn-primary gap-1.5 px-3 text-xs shrink-0"
               onClick={() => { setCurlPrefill(null); setSelectedId(null); setEditOpen(true); }}
             >
               <Plus className="w-3.5 h-3.5" /> 新建
             </button>
             <button
-              className="btn-ghost gap-1.5 px-3 text-xs"
+              className="btn-ghost gap-1.5 px-2.5 text-xs shrink-0"
               onClick={() => setCurlOpen(true)}
               title="粘贴 curl 命令快速创建接口"
             >
-              <Terminal className="w-3.5 h-3.5" /> curl 导入
+              <Terminal className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">curl 导入</span>
             </button>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -229,6 +242,14 @@ export default function EndpointsPage() {
               >
                 <X className="w-3 h-3" /> 清空筛选
               </button>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>
+              {endpointsLoading ? "正在读取接口" : `显示 ${filtered.length} / ${endpoints.length} 个接口`}
+            </span>
+            {(keyword || methodFilter || activeTags.size > 0) && (
+              <span className="text-brand-glow">筛选中</span>
             )}
           </div>
           {allTags.length > 0 && (
@@ -270,8 +291,13 @@ export default function EndpointsPage() {
 
         <div className="flex-1 overflow-auto p-2">
           {endpointsLoading ? (
-            <div className="flex items-center justify-center py-10 text-slate-500 text-sm gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin" /> 加载中…
+            <div className="space-y-2 p-2" aria-label="接口加载中">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-lg bg-bg-elevated/35 p-3 space-y-2">
+                  <div className="skeleton-line w-2/3" />
+                  <div className="skeleton-line w-full" />
+                </div>
+              ))}
             </div>
           ) : endpoints.length === 0 ? (
             <Empty
@@ -306,7 +332,7 @@ export default function EndpointsPage() {
                       ? "bg-rose-400"
                       : "bg-amber-400"
                     : null;
-                  const isStarred = starredIds.has(ep.id);
+                  const isStarred = !!ep.starred;
                   return (
                     <div
                       key={ep.id}
@@ -319,7 +345,8 @@ export default function EndpointsPage() {
                     >
                       <button
                         className="shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors"
-                        onClick={(e) => toggleStar(ep.id, e)}
+                        onClick={(e) => toggleStar(ep.id, isStarred, e)}
+                        disabled={listStarMut.isPending}
                         title={isStarred ? "取消星标" : "加入星标"}
                       >
                         <Star className={`w-3.5 h-3.5 ${isStarred ? "text-amber-400 fill-current" : "text-slate-600"}`} />

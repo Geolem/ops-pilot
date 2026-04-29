@@ -16,7 +16,7 @@ type EnvDraft = Partial<Environment> & { _headers: KV[] };
 export default function ProjectsPage() {
   const qc = useQueryClient();
   const { activeProjectId, setActiveProject } = useAppStore();
-  const { data: projects = [] } = useQuery({
+  const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.get<Project[]>("/api/projects"),
   });
@@ -84,11 +84,11 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      <div className="flex items-start gap-3 justify-between">
+    <div className="page-shell space-y-6">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl font-semibold text-white">项目 & 环境</h1>
-          <p className="text-sm text-slate-400 mt-1">一个项目可关联多个环境（dev / 测试 / 预发 / 生产）。</p>
+          <h1 className="page-title">项目 & 环境</h1>
+          <p className="page-subtitle">一个项目可关联多个环境（dev / 测试 / 预发 / 生产），顶部栏会跟随当前项目切换。</p>
         </div>
         <button className="btn-primary shrink-0" onClick={openNew}>
           <Plus className="w-4 h-4" />
@@ -97,7 +97,17 @@ export default function ProjectsPage() {
         </button>
       </div>
 
-      {projects.length === 0 ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card p-5 space-y-4">
+              <div className="skeleton-line w-1/2" />
+              <div className="skeleton-line w-2/3" />
+              <div className="skeleton-block" />
+            </div>
+          ))}
+        </div>
+      ) : projects.length === 0 ? (
         <Empty
           icon={<Boxes className="w-6 h-6" />}
           title="还没有项目"
@@ -128,13 +138,13 @@ export default function ProjectsPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <div className="font-medium text-white">{p.name}</div>
+                      <div className="panel-title">{p.name}</div>
                       {activeProjectId === p.id && (
                         <span className="chip bg-brand/20 text-brand-glow text-[10px] px-1.5 py-0.5">
                           ✓ 当前
                         </span>
                       )}
-                      <span className="chip bg-white/5 text-slate-400">
+                      <span className="chip bg-bg-elevated/60 text-slate-400">
                         {p._count?.endpoints ?? 0} 接口
                       </span>
                     </div>
@@ -183,13 +193,18 @@ export default function ProjectsPage() {
                     </button>
                   </div>
                   {(p.environments ?? []).length === 0 ? (
-                    <div className="text-xs text-slate-500">尚未添加环境</div>
+                    <button
+                      className="w-full text-left rounded-lg border border-dashed border-black/[0.10] dark:border-white/10 bg-bg-elevated/35 px-3 py-3 text-xs text-slate-500 hover:text-brand-glow hover:border-brand/30 transition-colors"
+                      onClick={() => openEnvEdit(p.id)}
+                    >
+                      尚未添加环境。点击添加 baseUrl 和公共变量。
+                    </button>
                   ) : (
                     <div className="space-y-1.5">
                       {p.environments!.map((env) => (
                         <div
                           key={env.id}
-                          className="flex items-center justify-between px-3 py-2 rounded-md bg-bg-elevated/40 hover:bg-bg-elevated/80 text-xs group"
+                          className="soft-row flex items-center justify-between px-3 py-2 bg-bg-elevated/40 text-xs group"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="chip bg-brand/15 text-brand-glow">{env.name}</span>
