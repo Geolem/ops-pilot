@@ -5,7 +5,10 @@ import {
   createSession,
   ensureAdminUser,
   getSessionUser,
+  hashPassword,
   revokeCurrentSession,
+  SESSION_COOKIE,
+  timingSafeEqual,
   verifyPassword,
 } from "../lib/auth.js";
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from "../lib/totp.js";
@@ -22,6 +25,18 @@ const otpVerifySchema = z.object({
 
 const otpResetSchema = z.object({
   username: z.string().min(1).optional(),
+});
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z
+    .string()
+    .min(12, "新密码至少需要 12 位")
+    .max(128, "新密码最多 128 位")
+    .refine((value) => /[a-z]/.test(value), "新密码需要包含小写字母")
+    .refine((value) => /[A-Z]/.test(value), "新密码需要包含大写字母")
+    .refine((value) => /\d/.test(value), "新密码需要包含数字")
+    .refine((value) => /[^A-Za-z0-9]/.test(value), "新密码需要包含特殊字符"),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -70,6 +85,39 @@ export async function authRoutes(app: FastifyInstance) {
     await revokeCurrentSession(req, reply);
     reply.code(204);
     return null;
+  });
+
+  app.post("/api/auth/password", async (req, reply) => {
+    const sessionUser = await getSessionUser(req);
+    if (!sessionUser) {
+      reply.code(401);
+      return { error: "UNAUTHORIZED", message: "请先登录" };
+    }
+
+    const data = passwordChangeSchema.parse(req.body);
+    const user = await prisma.adminUser.findUniqueOrThrow({ where: { id: sessionUser.id } });
+    if (!verifyPassword(data.currentPassword, user.passwordHash)) {
+      reply.code(400);
+      return { error: "INVALID_CURRENT_PASSWORD", message: "当前密码不正确" };
+    }
+    if (verifyPassword(data.newPassword, user.passwordHash)) {
+      reply.code(400);
+      return { error: "PASSWORD_REUSED", message: "新密码不能与当前密码相同" };
+    }
+
+    await prisma.$transaction([
+      prisma.adminUser.update({
+        where: { id: user.id },
+        data: { passwordHash: hashPassword(data.newPassword) },
+      }),
+      prisma.adminSession.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    return { ok: true };
   });
 
   app.post("/api/auth/otp/setup", async (req, reply) => {
@@ -135,7 +183,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/api/admin/auth/otp/reset", async (req, reply) => {
     const resetToken = process.env.ADMIN_OTP_RESET_TOKEN;
     const providedToken = req.headers["x-admin-reset-token"];
-    if (!resetToken || providedToken !== resetToken) {
+    if (!resetToken || typeof providedToken !== "string" || !timingSafeEqual(providedToken, resetToken)) {
       reply.code(403);
       return { error: "FORBIDDEN", message: "后台 OTP 重置 token 无效" };
     }
