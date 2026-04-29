@@ -27,10 +27,13 @@ export default function App() {
 
   return (
     <div className="h-full flex">
+      <a href="#main-content" className="skip-link">
+        跳到主要内容
+      </a>
       <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
       <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
         <TopBar />
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" className="flex-1 overflow-auto" tabIndex={-1}>
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<DashboardPage />} />

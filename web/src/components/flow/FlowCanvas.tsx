@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   BackgroundVariant,
   Controls,
@@ -12,18 +13,18 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
   ReactFlowProvider,
-} from "reactflow";
-import "reactflow/dist/style.css";
-import EndpointNode, { EndpointNodeData } from "./EndpointNode";
-import ConditionEdge, { ConditionEdgeData } from "./ConditionEdge";
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import EndpointNode, { EndpointFlowNode, EndpointNodeData } from "./EndpointNode";
+import ConditionEdge, { ConditionEdgeData, ConditionFlowEdge } from "./ConditionEdge";
 import { Endpoint } from "@/lib/api";
 
 const nodeTypes = { endpoint: EndpointNode };
 const edgeTypes = { condition: ConditionEdge };
 
 export interface FlowGraph {
-  nodes: Node<EndpointNodeData>[];
-  edges: Edge<ConditionEdgeData>[];
+  nodes: EndpointFlowNode[];
+  edges: ConditionFlowEdge[];
 }
 
 type RunStates = Record<string, { status: "idle" | "running" | "success" | "error"; httpStatus?: number | null; durationMs?: number | null }>;
@@ -52,8 +53,8 @@ function FlowCanvasInner({
   endpoints: Endpoint[];
   runStates: RunStates;
 }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<EndpointNodeData>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<ConditionEdgeData>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<EndpointFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<ConditionFlowEdge>([]);
   const externalChange = useRef(false);
   const lastEmitted = useRef<string>("");
 
@@ -72,7 +73,7 @@ function FlowCanvasInner({
     onConditionChange: edgeConditionChange,
   }), [edgeConditionChange]);
 
-  const styledEdge = useCallback((e: Edge<ConditionEdgeData>): Edge<ConditionEdgeData> => ({
+  const styledEdge = useCallback((e: ConditionFlowEdge): ConditionFlowEdge => ({
     ...e,
     type: "condition",
     animated: runStates[e.source]?.status === "running",
@@ -129,7 +130,7 @@ function FlowCanvasInner({
           endpointId: (n.data as any).endpointId ?? n.data.endpoint?.id ?? "",
           alias: n.data.alias,
         },
-      })) as unknown as Node<EndpointNodeData>[],
+      })) as EndpointFlowNode[],
       edges: edges.map((e) => ({
         id: e.id,
         source: e.source,

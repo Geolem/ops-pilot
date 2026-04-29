@@ -1,12 +1,6 @@
 services:
   ops-pilot:
-    build:
-      context: .
-      network: host
-      args:
-        ALPINE_MIRROR: https://mirrors.aliyun.com/alpine
-        NPM_REGISTRY: https://registry.npmmirror.com
-        WEB_BUILD_NODE_OPTIONS: --max-old-space-size=1536
+    image: registry.cn-shenzhen.aliyuncs.com/huazhiy/ops-pilot:latest
     container_name: ops-pilot
     restart: unless-stopped
     ports:
@@ -17,3 +11,5 @@ services:
       - PORT=5174
       - HOST=0.0.0.0
       - DATABASE_URL=file:/app/server/data/ops-pilot.db
+    mem_limit: 512m
+    memswap_limit: 512m

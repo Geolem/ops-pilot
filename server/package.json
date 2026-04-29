@@ -11,18 +11,18 @@
     "prisma:push": "prisma db push"
   },
   "dependencies": {
-    "@fastify/cors": "^10.0.1",
-    "@fastify/static": "^8.0.2",
-    "@prisma/client": "^5.22.0",
-    "fastify": "^5.1.0",
-    "jsonpath-plus": "^10.1.0",
-    "undici": "^6.21.0",
-    "zod": "^3.23.8"
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.1.3",
+    "@prisma/client": "^6.19.3",
+    "fastify": "^5.8.5",
+    "jsonpath-plus": "^10.4.0",
+    "prisma": "^6.19.3",
+    "undici": "^8.1.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }

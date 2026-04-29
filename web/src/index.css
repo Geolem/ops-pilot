@@ -1,7 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 /* ── Theme variables ─────────────────────────────────────────────────────── */
 :root, .light {
@@ -21,6 +20,7 @@
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
 html, body, #root { height: 100%; }
+html { scroll-behavior: smooth; }
 
 /* Smooth theme transition — applied only to structural elements */
 body, #root, aside, header, nav, main,
@@ -29,12 +29,44 @@ body, #root, aside, header, nav, main,
 }
 
 body {
-  @apply bg-bg-base antialiased;
+  background-color: rgb(var(--c-bg-base));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   font-family: "Poppins", "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
     ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 .light body, body { color: rgb(22 18 14); }
 .dark  body { color: rgb(220 228 240); }
+
+:focus-visible {
+  outline: 2px solid rgba(249,115,22,0.85);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 0.75rem;
+  z-index: 10000;
+  transform: translateY(-160%);
+  border-radius: 0.75rem;
+  background: rgb(var(--c-bg-panel));
+  color: rgb(22 18 14);
+  border: 1px solid rgba(120,80,20,0.16);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(80,52,24,0.16);
+  transition: transform 160ms ease;
+}
+.dark .skip-link {
+  color: rgb(220 228 240);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.42);
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
 
 /* Warm ambient gradient – light */
 .light body, body {
@@ -61,9 +93,100 @@ body {
 /* ── Component layer ─────────────────────────────────────────────────────── */
 @layer components {
 
+  .page-shell {
+    padding: 1rem;
+  }
+  @media (min-width: 768px) {
+    .page-shell { padding: 2rem; }
+  }
+
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  @media (max-width: 640px) {
+    .page-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    color: rgb(22 18 14);
+    text-wrap: balance;
+  }
+  .dark .page-title { color: rgb(246 248 252); }
+
+  .page-subtitle {
+    margin-top: 0.25rem;
+    max-width: 64ch;
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+    color: rgb(95 85 75);
+    text-wrap: pretty;
+  }
+  .dark .page-subtitle { color: rgb(162 178 205); }
+
+  .panel-title {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    color: rgb(38 34 30);
+  }
+  .dark .panel-title { color: rgb(246 248 252); }
+
+  .muted-copy {
+    color: rgb(95 85 75);
+  }
+  .dark .muted-copy { color: rgb(162 178 205); }
+
+  .soft-row {
+    border-radius: 0.75rem;
+    transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
+  }
+  .soft-row:hover {
+    background: rgba(255,255,255,0.58);
+  }
+  .dark .soft-row:hover {
+    background: rgb(var(--c-bg-hover) / 0.52);
+  }
+
+  .skeleton-line,
+  .skeleton-block {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.625rem;
+    background: rgba(120,80,20,0.10);
+  }
+  .dark .skeleton-line,
+  .dark .skeleton-block {
+    background: rgba(255,255,255,0.07);
+  }
+  .skeleton-line::after,
+  .skeleton-block::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent);
+    animation: skeleton-shimmer 1.35s infinite;
+  }
+  .dark .skeleton-line::after,
+  .dark .skeleton-block::after {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+  }
+  .skeleton-line { height: 0.875rem; }
+  .skeleton-block { min-height: 5rem; }
+
   /* ── Card ──────────────────────────────────────────────────────────────── */
   .card {
-    @apply rounded-2xl;
+    border-radius: 1rem;
     background: rgba(255,255,255,0.82);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -80,15 +203,47 @@ body {
 
   /* ── Buttons ────────────────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
-      transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    transition: all 200ms ease;
+  }
+  .btn:focus-visible,
+  .btn-primary:focus-visible,
+  .btn-ghost:focus-visible,
+  .btn-danger:focus-visible,
+  .input:focus-visible {
+    outline: 2px solid rgba(249,115,22,0.78);
+    outline-offset: 2px;
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
 
   /* Primary – orange gradient */
   .btn-primary {
-    @apply btn text-white;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    transition: all 200ms ease;
+    color: #fff;
     background: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
     box-shadow: 0 2px 10px rgba(249,115,22,0.32);
+  }
+  .btn-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
   .btn-primary:hover:not(:disabled) {
     transform: translateY(-2px);
@@ -101,8 +256,20 @@ body {
 
   /* Ghost – visible but secondary */
   .btn-ghost {
-    @apply btn;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    transition: all 200ms ease;
     color: rgb(90 82 76);          /* light: readable warm-gray */
+  }
+  .btn-ghost:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
   .btn-ghost:hover:not(:disabled) {
     color: rgb(22 18 14);
@@ -120,10 +287,22 @@ body {
 
   /* Danger */
   .btn-danger {
-    @apply btn;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    transition: all 200ms ease;
     color: rgb(185 28 28);
     background: rgba(220,38,38,0.09);
     border: 1px solid rgba(220,38,38,0.15);
+  }
+  .btn-danger:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
   .btn-danger:hover:not(:disabled) {
     background: rgba(220,38,38,0.16);
@@ -142,7 +321,13 @@ body {
 
   /* ── Input ──────────────────────────────────────────────────────────────── */
   .input {
-    @apply w-full rounded-xl px-3 py-2 text-sm outline-none transition-all duration-200;
+    width: 100%;
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    outline: none;
+    transition: all 200ms ease;
     background: rgba(0,0,0,0.04);
     border: 1.5px solid rgba(120,80,20,0.14);
     color: rgb(22 18 14);
@@ -167,7 +352,14 @@ body {
 
   /* ── Chip ───────────────────────────────────────────────────────────────── */
   .chip {
-    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.625rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
   }
 
   /* ── Method badges ──────────────────────────────────────────────────────── */
@@ -199,7 +391,14 @@ body {
 
   /* ── Status badge (pill with bg) ────────────────────────────────────────── */
   .status-badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
   }
   .status-badge-2xx { background: rgba(5,150,105,0.12);  color: #047857; }
   .status-badge-3xx { background: rgba(2,132,199,0.12);  color: #0369A1; }
@@ -215,7 +414,10 @@ body {
   /* ── Section label ──────────────────────────────────────────────────────── */
   /* Replaces the tiny text-[10px] uppercase pattern everywhere */
   .section-label {
-    @apply text-xs font-semibold uppercase tracking-wider;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
     color: rgb(120 100 80);      /* light: warm medium-gray */
     letter-spacing: 0.06em;
   }
@@ -278,6 +480,10 @@ body {
 /* ── Utility: hide scrollbar while keeping scroll ─────────────────────────── */
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
 
 /* ── Mobile touch: always show action buttons (no hover on touch) ──────────── */
 @media (hover: none) {

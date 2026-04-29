@@ -12,14 +12,14 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Node, Edge } from "reactflow";
 import { api, Endpoint, Flow } from "@/lib/api";
 import { useAppStore } from "@/store/app";
 import Empty from "@/components/Empty";
 import Modal from "@/components/Modal";
 import JsonEditor from "@/components/JsonEditor";
 import FlowCanvas from "@/components/flow/FlowCanvas";
-import { EndpointNodeData } from "@/components/flow/EndpointNode";
+import { EndpointFlowNode, EndpointNodeData } from "@/components/flow/EndpointNode";
+import { ConditionFlowEdge } from "@/components/flow/ConditionEdge";
 import { statusClass, stringifyPretty } from "@/lib/utils";
 
 type RunStates = Record<
@@ -169,7 +169,7 @@ function FlowEditor({
   environmentId: string | null;
 }) {
   const qc = useQueryClient();
-  const [graph, setGraph] = useState<{ nodes: Node<EndpointNodeData>[]; edges: Edge[] }>(() => hydrate(flow, endpoints));
+  const [graph, setGraph] = useState<{ nodes: EndpointFlowNode[]; edges: ConditionFlowEdge[] }>(() => hydrate(flow, endpoints));
   const [name, setName] = useState(flow.name);
   const [description, setDescription] = useState(flow.description ?? "");
   const [runResult, setRunResult] = useState<any>(null);
@@ -256,7 +256,7 @@ function FlowEditor({
     const position = last
       ? { x: last.position.x, y: last.position.y + 180 }
       : { x: 80, y: 80 };
-    const newNode: Node<EndpointNodeData> = {
+    const newNode: EndpointFlowNode = {
       id,
       type: "endpoint",
       position,
@@ -329,7 +329,7 @@ function FlowEditor({
   );
 }
 
-function hydrate(flow: Flow, endpoints: Endpoint[]): { nodes: Node<EndpointNodeData>[]; edges: Edge[] } {
+function hydrate(flow: Flow, endpoints: Endpoint[]): { nodes: EndpointFlowNode[]; edges: ConditionFlowEdge[] } {
   let rawNodes: any[] = [];
   let rawEdges: any[] = [];
   try {
@@ -344,8 +344,8 @@ function hydrate(flow: Flow, endpoints: Endpoint[]): { nodes: Node<EndpointNodeD
   }
 
   const isReactFlowFormat = rawNodes.length > 0 && rawNodes[0]?.position;
-  let nodes: Node<EndpointNodeData>[];
-  let edges: Edge[];
+  let nodes: EndpointFlowNode[];
+  let edges: ConditionFlowEdge[];
 
   if (isReactFlowFormat) {
     nodes = rawNodes.map((n) => ({

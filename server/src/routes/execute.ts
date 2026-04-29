@@ -16,26 +16,26 @@ const overrideSchema = z
   .object({
     method: z.string().optional(),
     path: z.string().optional(),
-    headers: z.record(z.string()).optional(),
-    query: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    query: z.record(z.string(), z.string()).optional(),
     body: z.string().optional(),
     bodyType: z.enum(["json", "form", "text", "none"]).optional(),
-    extract: z.record(z.string()).optional(),
+    extract: z.record(z.string(), z.string()).optional(),
   })
   .optional();
 
 const runSchema = z.object({
   endpointId: z.string().optional(),
   environmentId: z.string().optional(),
-  extraVariables: z.record(z.unknown()).optional(),
+  extraVariables: z.record(z.string(), z.unknown()).optional(),
   override: overrideSchema,
   ad_hoc: z
     .object({
       method: z.string(),
       baseUrl: z.string().optional(),
       path: z.string(),
-      headers: z.record(z.string()).optional(),
-      query: z.record(z.string()).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      query: z.record(z.string(), z.string()).optional(),
       body: z.string().optional(),
       bodyType: z.enum(["json", "form", "text", "none"]).optional(),
     })

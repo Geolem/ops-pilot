@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from "react";
-import { Github, Server, Info, Download, Upload, CheckCircle2, AlertTriangle, Tag as TagIcon } from "lucide-react";
+import { GitBranch, Server, Info, Download, Upload, CheckCircle2, AlertTriangle, Tag as TagIcon } from "lucide-react";
 import { toast } from "sonner";
 import Select from "@/components/Select";
 
@@ -41,15 +41,15 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-8 space-y-5 max-w-2xl">
+    <div className="page-shell space-y-5 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-white">设置</h1>
-        <p className="text-sm text-slate-400 mt-1">数据管理与部署信息。</p>
+        <h1 className="page-title">设置</h1>
+        <p className="page-subtitle">数据管理、标签维护与部署信息。</p>
       </div>
 
       {/* Export / Import */}
       <div className="card p-5 space-y-4">
-        <div className="flex items-center gap-2 text-slate-300">
+        <div className="flex items-center gap-2 panel-title">
           <Download className="w-4 h-4" />
           <span className="font-medium">数据备份 & 迁移</span>
         </div>
@@ -106,7 +106,7 @@ export default function SettingsPage() {
       <TagPanel />
 
       <div className="card p-5 space-y-2">
-        <div className="flex items-center gap-2 text-slate-300">
+        <div className="flex items-center gap-2 panel-title">
           <Server className="w-4 h-4" />
           <span className="font-medium">部署信息</span>
         </div>
@@ -118,7 +118,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="card p-5 space-y-2">
-        <div className="flex items-center gap-2 text-slate-300">
+        <div className="flex items-center gap-2 panel-title">
           <Info className="w-4 h-4" />
           <span className="font-medium">关于</span>
         </div>
@@ -129,8 +129,8 @@ export default function SettingsPage() {
       </div>
 
       <div className="card p-5 space-y-2">
-        <div className="flex items-center gap-2 text-slate-300">
-          <Github className="w-4 h-4" />
+        <div className="flex items-center gap-2 panel-title">
+          <GitBranch className="w-4 h-4" />
           <span className="font-medium">版本控制</span>
         </div>
         <div className="text-sm text-slate-400">
@@ -259,7 +259,7 @@ function TagPanel() {
 
   return (
     <div className="card p-5 space-y-4">
-      <div className="flex items-center gap-2 text-slate-300">
+      <div className="flex items-center gap-2 panel-title">
         <TagIcon className="w-4 h-4" />
         <span className="font-medium">标签管理</span>
       </div>
@@ -288,7 +288,7 @@ function TagPanel() {
           {tagMap.map(([tag, ids]) => (
             <div
               key={tag}
-              className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-white/5 group"
+              className="soft-row flex items-center gap-2 py-2 px-2 group"
             >
               <span className="chip bg-brand/10 text-brand text-[11px] shrink-0">{tag}</span>
               <span className="flex-1 text-xs text-slate-500">{ids.length} 个接口</span>
@@ -323,8 +323,8 @@ function TagPanel() {
       {/* Rename dialog */}
       {renameTag && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-white/10 shadow-2xl space-y-4">
-            <h3 className="text-sm font-medium text-white">重命名标签「{renameTag}」</h3>
+          <div className="bg-white dark:bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-black/[0.08] dark:border-white/10 shadow-2xl space-y-4">
+            <h3 className="panel-title">重命名标签「{renameTag}」</h3>
             <input
               className="input w-full"
               value={renameValue}
@@ -350,8 +350,8 @@ function TagPanel() {
       {/* Merge dialog */}
       {mergeTag && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-white/10 shadow-2xl space-y-4">
-            <h3 className="text-sm font-medium text-white">
+          <div className="bg-white dark:bg-bg-panel rounded-xl p-6 max-w-sm w-full mx-4 border border-black/[0.08] dark:border-white/10 shadow-2xl space-y-4">
+            <h3 className="panel-title">
               合并标签「{mergeTag}」到另一个标签
             </h3>
             <p className="text-xs text-slate-400">
