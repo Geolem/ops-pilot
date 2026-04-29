@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import crypto from "node:crypto";
 import { prisma } from "./prisma.js";
 
-const SESSION_COOKIE = "ops_pilot_session";
+export const SESSION_COOKIE = "ops_pilot_session";
 const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS ?? 7);
 const DEFAULT_ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? "admin";
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "admin123456";
@@ -129,7 +129,7 @@ function isPublicApi(url: string) {
   return url.startsWith("/api/auth/") || url === "/api/admin/auth/otp/reset" || url === "/api/health";
 }
 
-function timingSafeEqual(a: string, b: string): boolean {
+export function timingSafeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;

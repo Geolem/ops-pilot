@@ -107,6 +107,8 @@ export default function SettingsPage() {
       {/* Tag Management */}
       <TagPanel />
 
+      <PasswordPanel />
+
       <OtpPanel />
 
       <div className="card p-5 space-y-2">
@@ -147,6 +149,101 @@ export default function SettingsPage() {
 
 type ProjectItem = { id: string; name: string };
 type EndpointItem = { id: string; tags: string };
+
+function PasswordPanel() {
+  const { setUser } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const passwordIssue = useMemo(() => {
+    if (!newPassword) return "";
+    if (newPassword.length < 12) return "新密码至少需要 12 位";
+    if (!/[a-z]/.test(newPassword)) return "新密码需要包含小写字母";
+    if (!/[A-Z]/.test(newPassword)) return "新密码需要包含大写字母";
+    if (!/\d/.test(newPassword)) return "新密码需要包含数字";
+    if (!/[^A-Za-z0-9]/.test(newPassword)) return "新密码需要包含特殊字符";
+    if (confirmPassword && newPassword !== confirmPassword) return "两次输入的新密码不一致";
+    return "";
+  }, [newPassword, confirmPassword]);
+
+  const canSubmit =
+    currentPassword.length > 0 &&
+    newPassword.length > 0 &&
+    confirmPassword.length > 0 &&
+    !passwordIssue &&
+    !loading;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setLoading(true);
+    try {
+      await api.post("/api/auth/password", { currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setUser(null);
+      toast.success("密码已修改，请使用新密码重新登录");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="card p-5 space-y-4">
+      <div className="flex items-center gap-2 panel-title">
+        <KeyRound className="w-4 h-4" />
+        <span className="font-medium">管理员密码</span>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">当前密码</span>
+          <input
+            className="input"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">新密码</span>
+          <input
+            className="input"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">确认新密码</span>
+          <input
+            className="input"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <button className="btn-primary" disabled={!canSubmit} onClick={submit}>
+          <KeyRound className="w-4 h-4" />
+          {loading ? "修改中..." : "修改密码"}
+        </button>
+        <span className={`text-xs ${passwordIssue ? "text-amber-400" : "text-slate-500"}`}>
+          {passwordIssue || "要求：12 位以上，包含大小写字母、数字和特殊字符。修改后所有会话会失效。"}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function OtpPanel() {
   const { user, refresh } = useAuth();
