@@ -20,6 +20,15 @@ import MethodBadge from "./MethodBadge";
 import JsonEditor from "./JsonEditor";
 import Select from "./Select";
 
+function DisabledReason({ message }: { message: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-amber-400">
+      <AlertTriangle className="w-3 h-3" />
+      {message}
+    </span>
+  );
+}
+
 // ─── ResultPanel ──────────────────────────────────────────────────────────────
 // Reusable result display with tabs — used by both the main runner and TableView
 
@@ -281,6 +290,12 @@ export function TableView({
   const updateMapping = (i: number, patch: Partial<FieldMap>) =>
     setMapping((prev) => prev.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
 
+  const actionDisabledReason = !environmentId
+    ? "请先在顶部选择环境"
+    : !actionEpId
+      ? "请选择要执行的接口"
+      : "";
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -450,14 +465,17 @@ export function TableView({
                   placeholder="选择要执行的接口…"
                   className="text-xs flex-1 min-w-[200px]"
                 />
-                <button
-                  className="btn-primary py-1.5 text-xs"
-                  disabled={!actionEpId || !environmentId || runAction.isPending}
-                  onClick={() => runAction.mutate()}
-                >
-                  <Play className="w-3 h-3" />
-                  {runAction.isPending ? "执行中…" : "执行"}
-                </button>
+                <span className="inline-flex" title={actionDisabledReason || "执行"}>
+                  <button
+                    className="btn-primary py-1.5 text-xs"
+                    disabled={!!actionDisabledReason || runAction.isPending}
+                    onClick={() => runAction.mutate()}
+                  >
+                    <Play className="w-3 h-3" />
+                    {runAction.isPending ? "执行中…" : "执行"}
+                  </button>
+                </span>
+                {actionDisabledReason && <DisabledReason message={actionDisabledReason} />}
               </div>
 
               {/* Action result — same quality as main runner */}
@@ -494,6 +512,7 @@ export default function RequestRunner({
   const envList = qc.getQueryData<Environment[]>(["environments", projectId ?? ""]) ?? [];
   const currentEnv = envList.find((e) => e.id === environmentId) ?? null;
   const { url: previewUrl, unresolved } = buildPreviewUrl(endpoint, currentEnv);
+  const runDisabledReason = environmentId ? "" : "请先在顶部选择环境";
 
   const run = useMutation({
     mutationFn: () =>
@@ -536,15 +555,17 @@ export default function RequestRunner({
             </div>
           )}
         </div>
-        <button
-          className="btn-primary shrink-0"
-          onClick={() => run.mutate()}
-          disabled={run.isPending || !environmentId}
-          title={environmentId ? "执行 (⌘↵)" : "请先在顶部选择环境"}
-        >
-          <Play className="w-4 h-4" />
-          {run.isPending ? "执行中…" : "执行"}
-        </button>
+        <span className="inline-flex" title={runDisabledReason || "执行 (⌘↵)"}>
+          <button
+            className="btn-primary shrink-0"
+            onClick={() => run.mutate()}
+            disabled={run.isPending || !!runDisabledReason}
+          >
+            <Play className="w-4 h-4" />
+            {run.isPending ? "执行中…" : "执行"}
+          </button>
+        </span>
+        {runDisabledReason && <DisabledReason message={runDisabledReason} />}
       </div>
     </div>
   );

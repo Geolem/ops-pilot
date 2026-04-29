@@ -270,6 +270,12 @@ function FlowEditor({
     setGraph({ nodes: [...graph.nodes, newNode], edges: graph.edges });
   };
 
+  const runDisabledReason = !environmentId
+    ? "请先在顶部选择环境"
+    : graph.nodes.length === 0
+      ? "请先添加节点"
+      : "";
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-5 py-3 border-b border-white/5 bg-bg-panel/20 flex items-center gap-3">
@@ -291,15 +297,21 @@ function FlowEditor({
           <button className="btn-ghost" onClick={() => save.mutate()}>
             <Save className="w-3.5 h-3.5" /> 保存
           </button>
-          <button
-            className="btn-primary"
-            onClick={() => run.mutate()}
-            disabled={run.isPending || graph.nodes.length === 0 || !environmentId}
-            title={environmentId ? "" : "请先在顶部选择环境"}
-          >
-            <Play className="w-3.5 h-3.5" />
-            {run.isPending ? "执行中…" : "运行"}
-          </button>
+          <span className="inline-flex" title={runDisabledReason || "运行"}>
+            <button
+              className="btn-primary"
+              onClick={() => run.mutate()}
+              disabled={run.isPending || !!runDisabledReason}
+            >
+              <Play className="w-3.5 h-3.5" />
+              {run.isPending ? "执行中…" : "运行"}
+            </button>
+          </span>
+          {runDisabledReason && (
+            <span className="hidden xl:inline-flex items-center text-[11px] text-amber-400">
+              {runDisabledReason}
+            </span>
+          )}
           <button
             className="btn-danger"
             onClick={() => confirm(`删除编排 ${flow.name}？`) && del.mutate()}

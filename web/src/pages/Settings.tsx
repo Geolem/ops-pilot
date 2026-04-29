@@ -1,7 +1,9 @@
 import { useRef, useState, useEffect, useMemo } from "react";
-import { GitBranch, Server, Info, Download, Upload, CheckCircle2, AlertTriangle, Tag as TagIcon } from "lucide-react";
+import { GitBranch, Server, Info, Download, Upload, CheckCircle2, AlertTriangle, Tag as TagIcon, KeyRound, Copy } from "lucide-react";
 import { toast } from "sonner";
 import Select from "@/components/Select";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -105,6 +107,8 @@ export default function SettingsPage() {
       {/* Tag Management */}
       <TagPanel />
 
+      <OtpPanel />
+
       <div className="card p-5 space-y-2">
         <div className="flex items-center gap-2 panel-title">
           <Server className="w-4 h-4" />
@@ -143,6 +147,108 @@ export default function SettingsPage() {
 
 type ProjectItem = { id: string; name: string };
 type EndpointItem = { id: string; tags: string };
+
+function OtpPanel() {
+  const { user, refresh } = useAuth();
+  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const startSetup = async () => {
+    setLoading(true);
+    try {
+      const data = await api.post<{ secret: string; otpauthUri: string }>("/api/auth/otp/setup");
+      setSetup(data);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async () => {
+    if (code.length !== 6) return;
+    setLoading(true);
+    try {
+      await api.post("/api/auth/otp/verify", { code });
+      await refresh();
+      setSetup(null);
+      setCode("");
+      toast.success("OTP 已绑定");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = async (text: string, label: string) => {
+    await navigator.clipboard.writeText(text);
+    toast.success(`${label}已复制`);
+  };
+
+  return (
+    <div className="card p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-slate-300">
+          <KeyRound className="w-4 h-4" />
+          <span className="font-medium">OTP 绑定鉴权</span>
+        </div>
+        <span className={`status-badge ${user?.otpEnabled ? "status-badge-2xx" : "status-badge-4xx"}`}>
+          {user?.otpEnabled ? "已绑定" : "未绑定"}
+        </span>
+      </div>
+
+      <p className="text-sm text-slate-400 leading-relaxed">
+        绑定后登录必须同时输入密码和认证器中的 6 位动态验证码。解绑或重置只能通过后台
+        <code className="text-brand-glow mx-1">/api/admin/auth/otp/reset</code>
+        接口完成。
+      </p>
+
+      {user?.otpEnabled ? (
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+          当前账号已启用 OTP。若手机遗失，请让后台管理员使用重置 token 清除绑定，重置会同时注销现有会话。
+        </div>
+      ) : setup ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-white/10 bg-black/5 dark:bg-black/20 p-3 space-y-2">
+            <div className="text-xs text-slate-500">在 Google Authenticator、1Password、Microsoft Authenticator 等应用中手动添加密钥：</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-brand-glow text-sm break-all">{setup.secret}</code>
+              <button className="btn-ghost p-2" title="复制密钥" onClick={() => copy(setup.secret, "密钥")}>
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[11px] text-slate-500 break-all">{setup.otpauthUri}</code>
+              <button className="btn-ghost p-2" title="复制 otpauth 链接" onClick={() => copy(setup.otpauthUri, "链接")}>
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              className="input max-w-[160px] font-mono tracking-widest"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+            />
+            <button className="btn-primary" disabled={loading || code.length !== 6} onClick={verify}>
+              验证并绑定
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-primary" disabled={loading} onClick={startSetup}>
+          <KeyRound className="w-4 h-4" />
+          生成绑定密钥
+        </button>
+      )}
+    </div>
+  );
+}
 
 function parseTagsLocal(raw?: string | null): string[] {
   if (!raw) return [];
